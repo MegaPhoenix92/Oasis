@@ -1,0 +1,8 @@
+# AI agent instruction files (local-only, not for public repo)
+CLAUDE.md
+AGENT.md
+AGENTS.md
+GEMINI.md
+
+# Cline / Roo agent mode configs
+.clinerules-*
