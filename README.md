@@ -16,10 +16,10 @@ We are in the initial research and development phase, validating core technical 
 
 | Component | Technology |
 |-----------|------------|
-| Game Engine | Unreal Engine 5.5 |
+| Game Engine | Unity (PoC) — see [ADR-0001](docs/adr/0001-engine.md) |
 | Cloud Infrastructure | Google Cloud Platform (GCP) |
 | AI Integration | Claude AI with MCP (Model Context Protocol) |
-| Networking | Dedicated servers (native UE5) |
+| Networking | Dedicated servers (headless Unity) |
 
 ## Status
 
@@ -32,7 +32,7 @@ We are in the initial research and development phase, validating core technical 
 
 ## Key Decisions
 
-1. **Native Client First** - Building a native UE5 client rather than browser-based
+1. **Native Client First** - Building a native Unity client rather than browser-based (engine choice: [ADR-0001](docs/adr/0001-engine.md))
 2. **No Pixel Streaming Initially** - Direct rendering on client devices for best experience
 3. **AI-Native Creation** - AI companions as first-class citizens in world building
 
@@ -46,7 +46,7 @@ Oasis/
 │   ├── scope/          # MVP scope documents
 │   └── costs/          # Cost models
 ├── src/            # Source code
-│   ├── client/         # UE5 client
+│   ├── client/         # Unity client
 │   ├── server/         # Dedicated server
 │   └── ai/             # AI integration
 ├── assets/         # 3D assets, textures
@@ -61,6 +61,7 @@ Oasis/
 | [docs/architecture/ARCHITECTURE_OVERVIEW.md](docs/architecture/ARCHITECTURE_OVERVIEW.md) | Per-phase system architecture & tech decisions |
 | [docs/scope/MVP_SCOPE_DOCUMENT.md](docs/scope/MVP_SCOPE_DOCUMENT.md) | Per-phase features, milestones, success metrics, gate criteria |
 | [docs/costs/COST_MODEL.md](docs/costs/COST_MODEL.md) | Per-phase infrastructure & team cost estimates |
+| [docs/adr/](docs/adr/) | Architecture Decision Records (ADR-0001: engine choice) |
 
 ## License
 

@@ -35,7 +35,7 @@ This document outlines a modular, scalable architecture for the OASIS virtual wo
                               └────────┬────────┘
                                        │
 ┌──────────────┐              ┌────────▼────────┐              ┌──────────────┐
-│  UE5 Client  │◄────────────►│   API Gateway   │◄────────────►│  Admin Panel │
+│ Unity Client │◄────────────►│   API Gateway   │◄────────────►│  Admin Panel │
 │  (PC / VR)   │              │  (Cloud Run)    │              │    (Web)     │
 └──────────────┘              └────────┬────────┘              └──────────────┘
                                        │
@@ -43,7 +43,7 @@ This document outlines a modular, scalable architecture for the OASIS virtual wo
                     │                  │                  │
            ┌───────▼───────┐  ┌───────▼───────┐  ┌───────▼───────┐
            │  Game Servers │  │   AI Service  │  │  User Service │
-           │   (GKE/UE5)   │  │ (Claude MCP)  │  │  (Firebase)   │
+           │  (GKE/Unity)  │  │ (Claude MCP)  │  │  (Firebase)   │
            └───────┬───────┘  └───────┬───────┘  └───────┬───────┘
                    │                  │                  │
            ┌───────▼──────────────────▼──────────────────▼───────┐
@@ -65,7 +65,7 @@ This document outlines a modular, scalable architecture for the OASIS virtual wo
 └─────────────────────────────────────────────────────────────────┘
 
   ┌─────────────┐         ┌─────────────┐         ┌─────────────┐
-  │  UE5 Client │────────►│  Single     │────────►│  Cloud SQL  │
+  │Unity Client │────────►│  Single     │────────►│  Cloud SQL  │
   │  (Dev Build)│◄────────│  Game Server│◄────────│  (Phoenix)  │
   └─────────────┘         │  (GCE VM)   │         └─────────────┘
                           └──────┬──────┘
@@ -105,7 +105,7 @@ This document outlines a modular, scalable architecture for the OASIS virtual wo
   │ us-central1 │         │ us-east1    │         │ europe-west1│
   │ ┌─────────┐ │         │ ┌─────────┐ │         │ ┌─────────┐ │
   │ │ GKE Pod │ │         │ │ GKE Pod │ │         │ │ GKE Pod │ │
-  │ │(UE5 Srv)│ │         │ │(UE5 Srv)│ │         │ │(UE5 Srv)│ │
+  │ │ (Unity) │ │         │ │ (Unity) │ │         │ │ (Unity) │ │
   │ └─────────┘ │         │ └─────────┘ │         │ └─────────┘ │
   └──────┬──────┘         └──────┬──────┘         └──────┬──────┘
          │                        │                        │
@@ -236,7 +236,7 @@ User Prompt → Game Server → MCP Server → Claude API
 
 | Component | Choice | Rationale |
 |-----------|--------|-----------|
-| Game Engine | Unreal Engine 5.5 | Visual quality, networking, VR support |
+| Game Engine | Unity (PoC) | Runtime glTF (glTFast), C# AI-agent codegen, fast iteration — see ADR-0001. Production engine re-evaluated at Gate 1→2 |
 | Cloud Provider | GCP | Existing TROZLAN infra, Agones support |
 | Database (PoC/Alpha) | Cloud SQL | Familiar, Phoenix integration |
 | Database (Prod) | Cloud Spanner | Global consistency |
@@ -279,7 +279,7 @@ User Prompt → Game Server → MCP Server → Claude API
 ## Next Steps
 
 1. **Week 1-2:** Set up GCP project, VPC, basic infrastructure
-2. **Week 3-4:** Deploy single UE5 dedicated server, basic auth
+2. **Week 3-4:** Deploy single headless Unity dedicated server, basic auth
 3. **Week 5-6:** Claude API integration, first AI generation
 4. **Week 7-8:** Integration testing, performance baseline
 

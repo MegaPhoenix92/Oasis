@@ -79,6 +79,9 @@ Decision criteria from `scope/MVP_SCOPE_DOCUMENT.md:114`.
 - Users prefer manual tools over AI assistance
 - Core tech infeasible on consumer hardware
 
+**Decision to make at this gate:**
+- **Production engine** — Phase 1 runs on Unity ([ADR-0001](adr/0001-engine.md)). Decide here whether to continue on Unity or re-platform to UE5.5 for production fidelity/native-server scale, using PoC evidence. Keep the AI pipeline engine-agnostic so this stays a thin-layer decision, not a rewrite.
+
 ---
 
 ## Phase 2 — Alpha
@@ -139,7 +142,7 @@ From `costs/COST_MODEL.md:157`. Note these cumulative figures span team + infra 
 
 Carried across all phases (`architecture/ARCHITECTURE_OVERVIEW.md`):
 
-1. **Native UE5 client, no pixel streaming** — the dominant cost driver above; native rendering only. (`costs/COST_MODEL.md:105`)
+1. **Native client, no pixel streaming** — Unity for the PoC ([ADR-0001](adr/0001-engine.md)); production engine re-evaluated at Gate 1→2. No pixel streaming — it's the dominant cost driver; native rendering only. (`costs/COST_MODEL.md:105`)
 2. **MCP-based AI integration** — direct Claude API at PoC, dedicated MCP server from Alpha onward.
 3. **GCP-native** — leverages existing TROZLAN/Phoenix infrastructure.
 4. **Progressive scaling** — each phase's architecture is a superset of the prior; no throwaway rebuilds.
@@ -161,6 +164,7 @@ Carried across all phases (`architecture/ARCHITECTURE_OVERVIEW.md`):
 | `architecture/ARCHITECTURE_OVERVIEW.md` | Per-phase system architecture & tech decisions |
 | `scope/MVP_SCOPE_DOCUMENT.md` | Per-phase features, milestones, success metrics, gate criteria |
 | `costs/COST_MODEL.md` | Per-phase infrastructure & team cost estimates |
+| `adr/0001-engine.md` | Engine decision: Unity for PoC, production engine deferred to Gate 1→2 |
 
 ---
 
