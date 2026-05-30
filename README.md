@@ -62,6 +62,7 @@ Oasis/
 | [docs/scope/MVP_SCOPE_DOCUMENT.md](docs/scope/MVP_SCOPE_DOCUMENT.md) | Per-phase features, milestones, success metrics, gate criteria |
 | [docs/costs/COST_MODEL.md](docs/costs/COST_MODEL.md) | Per-phase infrastructure & team cost estimates |
 | [docs/adr/](docs/adr/) | Architecture Decision Records (ADR-0001: engine choice) |
+| [docs/issues/EPIC_AND_SUBISSUE_GUIDE.md](docs/issues/EPIC_AND_SUBISSUE_GUIDE.md) | How agents create epics & sub-issues (backlog structure) |
 
 ## License
 
