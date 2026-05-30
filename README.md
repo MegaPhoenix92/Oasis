@@ -24,9 +24,10 @@ We are in the initial research and development phase, validating core technical 
 ## Status
 
 - [x] Project initialization
-- [ ] Architecture documentation
-- [ ] MVP scope definition
-- [ ] Cost modeling
+- [x] Architecture documentation
+- [x] MVP scope definition
+- [x] Cost modeling
+- [x] Phase roadmap
 - [ ] Proof of concept development
 
 ## Key Decisions
@@ -40,6 +41,7 @@ We are in the initial research and development phase, validating core technical 
 ```
 Oasis/
 ├── docs/           # Documentation
+│   ├── ROADMAP.md      # Unified phase roadmap (start here)
 │   ├── architecture/   # System architecture
 │   ├── scope/          # MVP scope documents
 │   └── costs/          # Cost models
@@ -50,6 +52,15 @@ Oasis/
 ├── assets/         # 3D assets, textures
 └── infrastructure/ # IaC, deployment configs
 ```
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Unified phase roadmap — naming, gates, cross-links (**start here**) |
+| [docs/architecture/ARCHITECTURE_OVERVIEW.md](docs/architecture/ARCHITECTURE_OVERVIEW.md) | Per-phase system architecture & tech decisions |
+| [docs/scope/MVP_SCOPE_DOCUMENT.md](docs/scope/MVP_SCOPE_DOCUMENT.md) | Per-phase features, milestones, success metrics, gate criteria |
+| [docs/costs/COST_MODEL.md](docs/costs/COST_MODEL.md) | Per-phase infrastructure & team cost estimates |
 
 ## License
 
