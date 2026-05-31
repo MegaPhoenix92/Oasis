@@ -41,6 +41,8 @@ namespace Oasis.UI
         public event Action<string> OnFlowFailed;
         public event Action OnUndoRequested;
         public event Action OnRedoRequested;
+        public event Action<string, RefineTransformDelta> OnRefineTransformRequested;
+        public event Action<string, OasisGenerationFacade.GeneratedOasisAsset> OnRefineAssetReady;
 
         // Integration Seams for #18
         public event Action OnScreenshotRequested;
@@ -48,8 +50,11 @@ namespace Oasis.UI
 
         private OasisCreatorState currentState = OasisCreatorState.Idle;
         private OasisGenerationFacade facade;
+        private string selectedInstanceId;
+        private OasisSpec selectedPriorSpec;
 
         public OasisCreatorState CurrentState => currentState;
+        public string SelectedInstanceId => selectedInstanceId;
 
         private void Awake()
         {
@@ -99,6 +104,21 @@ namespace Oasis.UI
             }
 
             SetState(OasisCreatorState.Idle);
+        }
+
+        public void SetSelectedObject(string instanceId, OasisSpec priorSpec)
+        {
+            selectedInstanceId = instanceId;
+            selectedPriorSpec = priorSpec;
+        }
+
+        public void ClearSelectedObject(string instanceId = null)
+        {
+            if (!string.IsNullOrEmpty(instanceId) && selectedInstanceId != instanceId)
+                return;
+
+            selectedInstanceId = null;
+            selectedPriorSpec = null;
         }
 
         private void Update()
@@ -271,11 +291,62 @@ namespace Oasis.UI
             SetState(OasisCreatorState.Generating);
 
             facade.backendBaseUrl = backendBaseUrl;
+            if (!string.IsNullOrEmpty(selectedInstanceId) && selectedPriorSpec != null)
+            {
+                facade.StartRefineFlow(selectedPriorSpec, prompt,
+                    onSuccess: (result) =>
+                    {
+                        if (result.kind == "transform")
+                        {
+                            PerformSelectedTransformRefine(result);
+                        }
+                        else if (result.kind == "respec")
+                        {
+                            StartSelectedRespecRefine(result);
+                        }
+                        else
+                        {
+                            SetState(OasisCreatorState.Error, "model_parse_error");
+                            OnFlowFailed?.Invoke("model_parse_error");
+                        }
+                    },
+                    onFailure: (errorCode) =>
+                    {
+                        SetState(OasisCreatorState.Error, errorCode);
+                        OnFlowFailed?.Invoke(errorCode);
+                    }
+                );
+                return;
+            }
+
             facade.StartGenerationFlow(prompt,
                 onSuccess: (manifest) =>
                 {
                     SetState(OasisCreatorState.Preview);
                     OnGenerationReady?.Invoke(manifest);
+                },
+                onFailure: (errorCode) =>
+                {
+                    SetState(OasisCreatorState.Error, errorCode);
+                    OnFlowFailed?.Invoke(errorCode);
+                }
+            );
+        }
+
+        private void PerformSelectedTransformRefine(RefineResult result)
+        {
+            OnRefineTransformRequested?.Invoke(selectedInstanceId, result.transform_delta);
+            SetState(OasisCreatorState.Idle);
+        }
+
+        private void StartSelectedRespecRefine(RefineResult result)
+        {
+            string refinedInstanceId = selectedInstanceId;
+            facade.StartGenerationFromSpec(result.spec,
+                onSuccess: (asset) =>
+                {
+                    SetState(OasisCreatorState.Idle);
+                    OnRefineAssetReady?.Invoke(refinedInstanceId, asset);
                 },
                 onFailure: (errorCode) =>
                 {

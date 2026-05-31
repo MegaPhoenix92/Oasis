@@ -16,6 +16,8 @@ def test_creator_history_class_contracts() -> None:
     # Verify standard operation payload fields
     assert "public string type" in history_content
     assert "public OasisWorldObject snapshot" in history_content
+    assert "public OasisWorldObject before" in history_content
+    assert "public OasisWorldObject after" in history_content
     assert "public string instance_id" in history_content
     assert "public OasisWorldTransform from" in history_content
     assert "public OasisWorldTransform to" in history_content
@@ -27,6 +29,7 @@ def test_creator_history_class_contracts() -> None:
     assert "PopUndo" in history_content
     assert "PopRedo" in history_content
     assert "Clear" in history_content
+    assert "ReferencesAsset" in history_content
 
     # Invariant: new operation clears redo
     assert "redoStack.Clear()" in history_content
@@ -62,6 +65,47 @@ def test_move_uses_full_from_to_transforms_and_restores_exactly() -> None:
     # Verify that applying and restoring transform exists
     assert "RestoreMoveInMemory" in bootstrap_content
     assert "ApplyTransform" in bootstrap_content
+
+
+def test_refine_uses_full_before_after_snapshots_and_pinned_assets() -> None:
+    history_content = (PERSISTENCE_DIR / "OasisCreatorHistory.cs").read_text(encoding="utf-8")
+    bootstrap_content = (SCENE_DIR / "OasisSceneBootstrap.cs").read_text(encoding="utf-8")
+
+    assert 'type = "refine"' in bootstrap_content
+    assert "before = CloneWorldObject(before)" in bootstrap_content
+    assert "after = CloneWorldObject(after)" in bootstrap_content
+    assert "RestoreRefineInMemoryAsync(op.before)" in bootstrap_content
+    assert "RestoreRefineInMemoryAsync(op.after)" in bootstrap_content
+    assert "PinInSessionAsset(before.asset_id)" in bootstrap_content
+    assert "PinInSessionAsset(generatedAsset.Manifest.asset_id" in bootstrap_content
+    assert "creatorHistory.ReferencesAsset(assetId)" in bootstrap_content
+    assert "op.before != null && op.before.asset_id == assetId" in history_content
+    assert "op.after != null && op.after.asset_id == assetId" in history_content
+
+
+def test_refine_respec_commit_is_atomic_and_preserves_instance_id() -> None:
+    bootstrap_content = (SCENE_DIR / "OasisSceneBootstrap.cs").read_text(encoding="utf-8")
+
+    apply_refine = bootstrap_content[
+        bootstrap_content.find("public async Task ApplyRefineRespecAsync"):
+        bootstrap_content.find("public void PerformDelete")
+    ]
+    assert "TryBeginRespec(instanceId)" in apply_refine
+    assert "replacement.name = \"OasisObject_\" + instanceId" in apply_refine
+    assert "behaviour.instanceId = instanceId" in apply_refine
+    assert "after.asset_id = generatedAsset.Manifest.asset_id" in apply_refine
+    assert "ReplaceWorldObject(after)" in apply_refine
+    assert "creatorHistory.PushOperation(op)" in apply_refine
+    assert "placedWorldObjects.Remove(previousObject)" in apply_refine
+    assert apply_refine.find("creatorHistory.PushOperation(op)") < apply_refine.find("placedWorldObjects.Remove(previousObject)")
+    assert "gameObjectByInstanceId[instanceId] = replacement" in apply_refine
+    assert "creatorUI.SetSelectedObject(instanceId, generatedAsset.Manifest.spec)" in apply_refine
+    assert "catch (Exception)" in apply_refine
+    assert "ReplaceWorldObject(before)" in apply_refine
+    assert "Destroy(replacement)" in apply_refine
+    assert "FinishRespec(instanceId)" in apply_refine
+    assert "lock (respecInFlightLock)" in bootstrap_content
+    assert "creatorUI.ClearSelectedObject(instanceId)" in bootstrap_content
 
 
 def test_undo_redo_do_not_reference_generation_or_network_or_paths() -> None:

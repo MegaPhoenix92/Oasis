@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
+import math
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Dimensions(BaseModel):
@@ -34,6 +35,74 @@ class PromptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str
+
+
+class RefineRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prior_spec: Spec
+    directive: str
+
+
+class TransformVector3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+    z: float
+
+
+class TransformScaleFactor(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(ge=0.01)
+    y: float = Field(ge=0.01)
+    z: float = Field(ge=0.01)
+
+
+class TransformQuaternion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+    z: float
+    w: float
+
+    @model_validator(mode="after")
+    def must_be_unit_quaternion(self) -> "TransformQuaternion":
+        length = math.sqrt((self.x * self.x) + (self.y * self.y) + (self.z * self.z) + (self.w * self.w))
+        if not 0.999 <= length <= 1.001:
+            raise ValueError("rotation_delta must be a unit quaternion")
+        return self
+
+
+class TransformDelta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scale_factor: TransformScaleFactor
+    rotation_delta: TransformQuaternion
+    translate: TransformVector3
+
+
+class TransformRefineResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["transform"]
+    transform_delta: TransformDelta
+    rationale: str = Field(min_length=1)
+    spec: None = None
+
+
+class RespecRefineResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["respec"]
+    spec: Spec
+    rationale: str = Field(min_length=1)
+    transform_delta: None = None
+
+
+RefineResult = Annotated[TransformRefineResult | RespecRefineResult, Field(discriminator="kind")]
 
 
 class ErrorResponse(BaseModel):

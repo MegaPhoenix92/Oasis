@@ -22,6 +22,47 @@ namespace Oasis.UI
     }
 
     [Serializable]
+    public class RefineRequest
+    {
+        public OasisSpec prior_spec;
+        public string directive;
+    }
+
+    [Serializable]
+    public class RefineVector3
+    {
+        public float x;
+        public float y;
+        public float z;
+    }
+
+    [Serializable]
+    public class RefineQuaternion
+    {
+        public float x;
+        public float y;
+        public float z;
+        public float w;
+    }
+
+    [Serializable]
+    public class RefineTransformDelta
+    {
+        public RefineVector3 scale_factor;
+        public RefineQuaternion rotation_delta;
+        public RefineVector3 translate;
+    }
+
+    [Serializable]
+    public class RefineResult
+    {
+        public string kind;
+        public RefineTransformDelta transform_delta;
+        public OasisSpec spec;
+        public string rationale;
+    }
+
+    [Serializable]
     public class JobResponse
     {
         public string status;
@@ -60,6 +101,16 @@ namespace Oasis.UI
         public void StartGenerationFlow(string prompt, Action<GeneratedOasisAsset> onSuccess, Action<string> onFailure)
         {
             StartCoroutine(CoGenerateFlow(prompt, onSuccess, onFailure));
+        }
+
+        public void StartRefineFlow(OasisSpec priorSpec, string directive, Action<RefineResult> onSuccess, Action<string> onFailure)
+        {
+            StartCoroutine(CoRefineFlow(priorSpec, directive, onSuccess, onFailure));
+        }
+
+        public void StartGenerationFromSpec(OasisSpec spec, Action<GeneratedOasisAsset> onSuccess, Action<string> onFailure)
+        {
+            StartCoroutine(CoGenerateFromSpecFlow(spec, onSuccess, onFailure));
         }
 
         public void RecordAssetImported(string assetId)
@@ -122,12 +173,12 @@ namespace Oasis.UI
             }
 
             // 3. Poll GET /jobs/{job_id} until ready or failed (timeout at 90s)
-            float startTime = Time.time;
+            float startTime = Time.realtimeSinceStartup;
             float pollInterval = 2.0f;
 
             while (true)
             {
-                if (Time.time - startTime > 90f)
+                if (Time.realtimeSinceStartup - startTime > 90f)
                 {
                     EmitTelemetry("flow_failed", errorCode: "timeout");
                     onFailure?.Invoke("timeout");
@@ -156,6 +207,175 @@ namespace Oasis.UI
                     catch (Exception)
                     {
                         // Fail to parse
+                    }
+
+                    if (jobRes == null)
+                    {
+                        EmitTelemetry("flow_failed", errorCode: "provider_error");
+                        onFailure?.Invoke("provider_error");
+                        yield break;
+                    }
+
+                    if (jobRes.status == "ready")
+                    {
+                        string manifestJson = JsonUtility.ToJson(jobRes.manifest);
+                        if (jobRes.manifest == null || string.IsNullOrEmpty(jobRes.manifest.asset_id) || !IsValidFetchPath(jobRes.manifest))
+                        {
+                            EmitTelemetry("flow_failed", errorCode: "asset_invalid");
+                            onFailure?.Invoke("asset_invalid");
+                        }
+                        else
+                        {
+                            EmitTelemetry("generation_ready", provider: jobRes.manifest.provider, assetId: jobRes.manifest.asset_id);
+                            yield return CoDownloadAsset(jobRes.manifest, manifestJson, onSuccess, onFailure);
+                        }
+                        yield break;
+                    }
+                    else if (jobRes.status == "failed")
+                    {
+                        string err = string.IsNullOrEmpty(jobRes.error_code) ? "provider_error" : jobRes.error_code;
+                        EmitTelemetry("flow_failed", errorCode: err);
+                        onFailure?.Invoke(err);
+                        yield break;
+                    }
+                }
+
+                yield return new WaitForSeconds(pollInterval);
+            }
+        }
+
+        private IEnumerator CoRefineFlow(OasisSpec priorSpec, string directive, Action<RefineResult> onSuccess, Action<string> onFailure)
+        {
+            activePromptId = Guid.NewGuid().ToString();
+            activeFlowStartedAt = Time.realtimeSinceStartup;
+
+            string refineUrl = NormalizeBaseUrl() + "/refine";
+            RefineRequest refineReq = new RefineRequest { prior_spec = priorSpec, directive = directive };
+            string refineJson = JsonUtility.ToJson(refineReq);
+
+            using (UnityWebRequest request = new UnityWebRequest(refineUrl, "POST"))
+            {
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(refineJson);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                yield return request.SendWebRequest();
+
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    string errorCode = ExtractErrorCode(request);
+                    EmitTelemetry("flow_failed", errorCode: errorCode);
+                    onFailure?.Invoke(errorCode);
+                    yield break;
+                }
+
+                RefineResult result = null;
+                try
+                {
+                    result = JsonUtility.FromJson<RefineResult>(request.downloadHandler.text);
+                }
+                catch (Exception)
+                {
+                    // Fail below with the sanitized provider error.
+                }
+
+                if (result == null || string.IsNullOrEmpty(result.kind) || (!result.kind.Equals("transform") && !result.kind.Equals("respec")))
+                {
+                    EmitTelemetry("flow_failed", errorCode: "model_parse_error");
+                    onFailure?.Invoke("model_parse_error");
+                    yield break;
+                }
+
+                onSuccess?.Invoke(result);
+            }
+        }
+
+        private IEnumerator CoGenerateFromSpecFlow(OasisSpec spec, Action<GeneratedOasisAsset> onSuccess, Action<string> onFailure)
+        {
+            activePromptId = Guid.NewGuid().ToString();
+            activeFlowStartedAt = Time.realtimeSinceStartup;
+
+            string generateUrl = NormalizeBaseUrl() + "/generate";
+            string specJson = JsonUtility.ToJson(spec);
+            string jobId = null;
+
+            using (UnityWebRequest request = new UnityWebRequest(generateUrl, "POST"))
+            {
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(specJson);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                yield return request.SendWebRequest();
+
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    string errorCode = ExtractErrorCode(request);
+                    EmitTelemetry("flow_failed", errorCode: errorCode);
+                    onFailure?.Invoke(errorCode);
+                    yield break;
+                }
+
+                GenerateResponse genRes = null;
+                try
+                {
+                    genRes = JsonUtility.FromJson<GenerateResponse>(request.downloadHandler.text);
+                }
+                catch (Exception)
+                {
+                    // Fail below with a sanitized provider error.
+                }
+
+                if (genRes == null || string.IsNullOrEmpty(genRes.job_id))
+                {
+                    EmitTelemetry("flow_failed", errorCode: "provider_error");
+                    onFailure?.Invoke("provider_error");
+                    yield break;
+                }
+
+                jobId = genRes.job_id;
+            }
+
+            yield return CoPollJobAndDownload(jobId, onSuccess, onFailure);
+        }
+
+        private IEnumerator CoPollJobAndDownload(string jobId, Action<GeneratedOasisAsset> onSuccess, Action<string> onFailure)
+        {
+            float startTime = Time.realtimeSinceStartup;
+            float pollInterval = 2.0f;
+
+            while (true)
+            {
+                if (Time.realtimeSinceStartup - startTime > 90f)
+                {
+                    EmitTelemetry("flow_failed", errorCode: "timeout");
+                    onFailure?.Invoke("timeout");
+                    yield break;
+                }
+
+                string jobUrl = NormalizeBaseUrl() + "/jobs/" + jobId;
+
+                using (UnityWebRequest request = UnityWebRequest.Get(jobUrl))
+                {
+                    yield return request.SendWebRequest();
+
+                    if (request.result != UnityWebRequest.Result.Success)
+                    {
+                        string errorCode = ExtractErrorCode(request);
+                        EmitTelemetry("flow_failed", errorCode: errorCode);
+                        onFailure?.Invoke(errorCode);
+                        yield break;
+                    }
+
+                    JobResponse jobRes = null;
+                    try
+                    {
+                        jobRes = JsonUtility.FromJson<JobResponse>(request.downloadHandler.text);
+                    }
+                    catch (Exception)
+                    {
+                        // Fail below with a sanitized provider error.
                     }
 
                     if (jobRes == null)
