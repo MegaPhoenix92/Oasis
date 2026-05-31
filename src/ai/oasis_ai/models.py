@@ -49,6 +49,21 @@ class VoiceTranscriptResponse(BaseModel):
     transcript: str
 
 
+class UserStudyObservationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(min_length=1)
+    prompt_id: str = Field(min_length=1)
+    flow_completed: bool | None = None
+    quality_score: int | None = Field(default=None, ge=1, le=10)
+    voice_intent_correct: bool | None = None
+    refine_cycles: int | None = Field(default=None, ge=0)
+
+
+class UserStudyObservationResponse(BaseModel):
+    status: Literal["recorded"]
+
+
 class RefineRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

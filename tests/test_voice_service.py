@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from oasis_ai.app import create_app
+from oasis_ai.telemetry import LocalTelemetry
 from oasis_ai.voice import MAX_AUDIO_BASE64_CHARS, VoiceService
 
 
@@ -25,19 +26,24 @@ class FakeSttClient:
         return self.transcript
 
 
-def client_with_voice(voice_service: VoiceService) -> TestClient:
-    return TestClient(create_app(voice_service=voice_service))
+def client_with_voice(voice_service: VoiceService, telemetry: LocalTelemetry | None = None) -> TestClient:
+    return TestClient(create_app(voice_service=voice_service, telemetry=telemetry or LocalTelemetry(enabled=False)))
 
 
-def test_voice_transcript_endpoint_returns_text_without_generation_or_telemetry(tmp_path: Path) -> None:
+def test_voice_transcript_endpoint_returns_text_and_sanitized_telemetry(tmp_path: Path) -> None:
     telemetry_path = tmp_path / "telemetry.jsonl"
-    client = client_with_voice(VoiceService(FakeSttClient()))
+    client = client_with_voice(VoiceService(FakeSttClient()), LocalTelemetry(telemetry_path))
 
     response = client.post("/voice/transcribe", json={"transcript": "  Make It Taller  "})
 
     assert response.status_code == 200
     assert response.json() == {"transcript": "make it taller"}
-    assert not telemetry_path.exists()
+    events = telemetry_path.read_text(encoding="utf-8").splitlines()
+    assert len(events) == 2
+    assert '"event":"prompt_submitted"' in events[0]
+    assert '"provider":"voice"' in events[0]
+    assert '"event":"prompt_structured"' in events[1]
+    assert "Make It Taller" not in telemetry_path.read_text(encoding="utf-8")
 
 
 def test_voice_audio_is_transient_and_temp_file_deleted_after_stt() -> None:
@@ -121,7 +127,7 @@ def test_voice_temp_tracking_is_disabled_by_default() -> None:
 
 def test_stt_provider_key_is_server_side_only(monkeypatch) -> None:
     monkeypatch.delenv("OASIS_STT_API_KEY", raising=False)
-    client = TestClient(create_app())
+    client = TestClient(create_app(telemetry=LocalTelemetry(enabled=False)))
     audio_base64 = base64.b64encode(b"RIFFmock wav bytes").decode("ascii")
 
     response = client.post("/voice/transcribe", json={"audio_base64": audio_base64, "content_type": "audio/wav"})

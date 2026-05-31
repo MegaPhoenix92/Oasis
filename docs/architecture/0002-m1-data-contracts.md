@@ -186,6 +186,14 @@ Standard fields per event: `session_id`, `prompt_id`, `provider`, `elapsed_ms`,
 `error_code`, `asset_id`. Phase-1 sink = local JSONL. These feed the Gate 1→2 metrics
 and the golden-prompt suite (#73).
 
+#24 extends this contract without adding telemetry event names or raw payload fields:
+refinement and voice paths emit the same `prompt_submitted`, `prompt_structured`, and
+`flow_failed` events with sanitized typed fields only. Gate metrics are derived by
+`scripts/derive_phase1_metrics.py` from the local JSONL sink plus a separate sanitized
+user-study hook (`/metrics/user-study`) that records only completion, quality score,
+voice-intent correctness, and refine-cycle counts. The hook must never carry raw prompts,
+transcripts, audio, provider exceptions, API keys, or participant PII.
+
 **Performance budget (#9):** Claude < 5s · Meshy < 60s · import < 5s · **total < 90s**,
 working ≥ 80% of the time.
 
