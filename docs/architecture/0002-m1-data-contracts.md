@@ -109,11 +109,14 @@ Meshy `text-to-3d` (PoC defaults):
 
 | Meshy param | Source |
 |-------------|--------|
-| `prompt` | `spec.meshy_prompt` |
-| `art_style` | derived from `spec.style` (e.g. `realistic` / `sculpture`) |
+| `prompt` | `spec.meshy_prompt`, capped to Meshy v2's 600-character limit |
 | `mode` | `preview` for M1 (fast); `refine` deferred |
 | `target_polycount` | PoC default (medium); may be informed by `spec.dimensions` |
 | output `format` | glTF 2.0 / `glb` |
+
+`spec.style` remains part of the authored `Spec` and should be reflected in
+`meshy_prompt`; it is not sent as an `art_style` parameter because Meshy v2
+`text-to-3d` does not define that field.
 
 `#3` (3D-API evaluation) already recommends Meshy; #6 implements it and records a cost
 projection. **Spend control:** #6 must cap/guard generation calls (per-run ceiling) so a
@@ -152,6 +155,8 @@ export (#20).
   (see §1 Asset delivery).
 - The cached binary + manifest (not `source_url`) are what persist for save/load (#19)
   and export (#20); the server cache is ephemeral — see the persistence invariant in §7.
+- `triangle_count` is derived from the cached GLB metadata; Meshy v2 task responses are
+  not the source of truth for this field.
 
 Import rules (#7): reject unsupported formats, oversized files, or assets missing
 required manifest fields; a malformed/oversized asset must fail gracefully and **never
