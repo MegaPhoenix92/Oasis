@@ -117,28 +117,34 @@ gh label create phase:3 --repo "$OWNER/$REPO" --color b60205 --description "Phas
 3. **Every task gets a phase label and a `delegate:*` label.** Unassigned work is invisible work.
 4. **Epics are not worked directly.** They track; the sub-issues hold the actual deliverable and acceptance criteria.
 5. **New tasks** are created under an existing epic (or a new epic you create first), then immediately `add_sub`-linked.
-6. **Respect the gate.** Don't open Phase 2 epics until Gate 1→2 passes (see [`../ROADMAP.md`](../ROADMAP.md)). Phase 2/3 epics below are a reference, not a backlog to start now.
+6. **Respect the gate (work, not creation).** The full forward backlog now exists (see §7), but Phase 2/3 work is **gated**: don't *start building* Phase 2 issues until Gate 1→2 (#25) passes, or Phase 3 until Gate 2→3 (#47) passes. The `phase:2` / `phase:3` label is the "not yet active" signal. Creating the issues ahead of time is fine (planning visibility); working them out of order is not.
 
 ---
 
-## 7. Extending to later phases
+## 7. Full backlog (created 2026-05-30)
 
-When a gate passes, create the next phase's epics the same way. Reference scaffold (do **not** create until the gate opens):
+The complete roadmap backlog now exists on GitHub — built by reconciling an independent Codex design with a Workflow design + completeness critic. Structure:
 
-- **Phase 2 (Alpha):** `[EPIC] Accounts & Identity`, `[EPIC] Real-time Multiplayer`, `[EPIC] Spatial Voice`, `[EPIC] Collaborative Building`, `[EPIC] Quest VR Port`, `[EPIC] Public Gallery`
-- **Phase 3 (Production):** `[EPIC] Global Infra (Spanner/Agones)`, `[EPIC] Creator Economy`, `[EPIC] AI NPCs`, `[EPIC] Live Events`, `[EPIC] Enterprise/Education`
+- **Phase 1 (PoC)** — capstone **#9**; epics **#10–#14** (Foundation, AI Pipeline, Engine & Scene, Creator Experience, World Interaction & Polish) + their tasks.
+- **[GATE 1→2] #25** — PoC exit + production-engine decision (Unity-continue vs UE5.5 re-platform, per ADR-0001).
+- **Phase 2 (Alpha)** — capstone **#26**; epics **#27–#35** (Accounts, Multiplayer, Spatial Voice, Collaborative Building, Gallery, Quest VR, Alpha Infra, Trust & Safety, Legal/Privacy) + tasks.
+- **[GATE 2→3] #47** — Alpha readiness + production transition (incl. the NO-GO criteria the ROADMAP flagged as undefined).
+- **Phase 3 (Production)** — capstone **#48**; epics **#49–#56** (Global Infra, Cross-Platform/Streaming, Creator Economy, AI NPCs, Live Events, Enterprise/Education, Observability/SRE/DR, Localization) + tasks.
+- **Cross-cutting** — epic **#65** Roadmap, Budget & Repo Hygiene + tasks (budget/break-even reconcile, CI, .env.example, Git LFS, test+secrets strategy).
 
-Each maps to features in [`../scope/MVP_SCOPE_DOCUMENT.md`](../scope/MVP_SCOPE_DOCUMENT.md).
+Each maps to features in [`../scope/MVP_SCOPE_DOCUMENT.md`](../scope/MVP_SCOPE_DOCUMENT.md) and phases/gates in [`../ROADMAP.md`](../ROADMAP.md). New work attaches under the relevant existing epic via `add_sub` (§4).
 
 ---
 
-## 8. Quick checklist
+## 8. Bootstrap checklist (completed 2026-05-30)
 
-- [ ] Labels created (§5)
-- [ ] 4 Phase-1 epics created with correct labels (§3)
-- [ ] #1–#9 linked under the right epics via `add_sub` (§4) — none recreated
-- [ ] 4 epics nested under #9
-- [ ] Each open task has a `phase:1` + `delegate:*` label
+- [x] Labels created (§5) — incl. `epic`, `phase:1/2/3`, `gate`
+- [x] Phase-1 epics created and linked under #9 (§3)
+- [x] #1–#8 linked under the right epics via `add_sub` (§4) — none recreated
+- [x] Full forward backlog created (§7): 23 epics, 2 gates, 3 capstones, ~40 tasks
+- [x] Every task carries a `phase:*` + `delegate:*` label
+
+Ongoing rule for new work: attach under the relevant existing epic via `add_sub`; never recreate existing issues.
 
 ---
 
