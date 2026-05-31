@@ -254,6 +254,12 @@ namespace Oasis.Persistence
             }
             catch (Exception)
             {
+                foreach (GameObject importedObject in result.ImportedObjects)
+                {
+                    if (importedObject != null)
+                        Destroy(importedObject);
+                }
+                result.ImportedObjects.Clear();
                 result.Failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.FilesystemError, "Saved world could not be loaded.");
             }
 
@@ -604,7 +610,7 @@ namespace Oasis.Persistence
                 while (colonIndex < json.Length && char.IsWhiteSpace(json[colonIndex]))
                     colonIndex++;
                 if (colonIndex >= json.Length || json[colonIndex] != ':')
-                    return false;
+                    continue;
 
                 objectStart = colonIndex + 1;
                 while (objectStart < json.Length && char.IsWhiteSpace(json[objectStart]))

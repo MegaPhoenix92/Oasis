@@ -93,10 +93,10 @@ namespace Oasis.Scene
 
         public async Task<OasisWorldLoadResult> LoadWorldAsync(string worldId, CancellationToken cancellationToken = default)
         {
-            DestroyActiveSceneObjects();
             OasisWorldLoadResult result = await worldPersistence.LoadAsync(worldId, glbImporter, cancellationToken);
             if (result.Success && result.Document != null)
             {
+                DestroyActiveSceneObjects();
                 activeWorld = result.Document;
                 manifestJsonByAssetId.Clear();
                 foreach (KeyValuePair<string, string> entry in result.ManifestJsonByAssetId)

@@ -237,3 +237,5 @@ def test_scene_settings_extraction_ignores_string_value_collisions() -> None:
     assert "json.IndexOf" not in persistence
     assert "depth != 1" in persistence
     assert "keyBuilder.ToString()" in persistence
+    assert "json[colonIndex] != ':'" in persistence
+    assert "continue;" in persistence
