@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
@@ -7,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from oasis_ai.app import create_app
-from oasis_ai.generation import GenerationService
+from oasis_ai.generation import HttpxMeshyClient, GenerationService
 from oasis_ai.models import Spec
 from oasis_ai.service import SpecService
 from oasis_ai.telemetry import LocalTelemetry
@@ -68,6 +70,18 @@ def spec_payload() -> dict[str, Any]:
     }
 
 
+def glb_with_triangles(index_count: int) -> bytes:
+    payload = {
+        "asset": {"version": "2.0"},
+        "meshes": [{"primitives": [{"indices": 0}]}],
+        "accessors": [{"count": index_count}],
+    }
+    json_chunk = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+    json_chunk += b" " * ((4 - len(json_chunk) % 4) % 4)
+    length = 12 + 8 + len(json_chunk)
+    return b"glTF" + (2).to_bytes(4, "little") + length.to_bytes(4, "little") + len(json_chunk).to_bytes(4, "little") + b"JSON" + json_chunk
+
+
 def client_with(fake_meshy: FakeMeshyClient, cache_dir: Path, max_generation_calls: int = 5) -> TestClient:
     telemetry = LocalTelemetry(cache_dir / "telemetry.jsonl", enabled=False)
     app = create_app(
@@ -118,16 +132,16 @@ def test_create_chains_spec_to_generation_and_returns_immediate_pending_job(tmp_
 
 def test_polling_ready_downloads_cache_and_returns_locked_manifest(tmp_path: Path) -> None:
     source_url = "https://assets.meshy.ai/task/output/model.glb?Expires=test"
+    glb = glb_with_triangles(6)
     fake_meshy = FakeMeshyClient(
         [
             {
                 "status": "SUCCEEDED",
                 "model_urls": {"glb": source_url},
-                "triangle_count": 12345,
                 "texture_urls": [{"base_color": "texture.png"}],
             }
         ],
-        glb_bytes=b"cached-glb",
+        glb_bytes=glb,
     )
     client = client_with(fake_meshy, tmp_path)
 
@@ -148,17 +162,42 @@ def test_polling_ready_downloads_cache_and_returns_locked_manifest(tmp_path: Pat
     assert manifest["source_url"] == source_url
     assert manifest["fetch_path"] == f"/assets/{manifest['asset_id']}"
     assert manifest["local_path"] == f"assets/generated/{manifest['asset_id']}.glb"
-    assert manifest["checksum_sha256"] == "9707a773dd4b3a1c73cd41173b9279fe054523870348232987ae51c358bbb475"
+    assert manifest["checksum_sha256"] == hashlib.sha256(glb).hexdigest()
     assert manifest["format"] == "glb"
-    assert manifest["file_size_bytes"] == len(b"cached-glb")
-    assert manifest["triangle_count"] == 12345
+    assert manifest["file_size_bytes"] == len(glb)
+    assert manifest["triangle_count"] == 2
     assert manifest["texture_count"] == 1
-    assert (tmp_path / f"{manifest['asset_id']}.glb").read_bytes() == b"cached-glb"
+    assert (tmp_path / f"{manifest['asset_id']}.glb").read_bytes() == glb
 
     asset_response = client.get(manifest["fetch_path"])
     assert asset_response.status_code == 200
-    assert asset_response.content == b"cached-glb"
+    assert asset_response.content == glb
     assert asset_response.headers["content-type"].startswith("model/gltf-binary")
+
+
+def test_meshy_v2_payload_omits_art_style_and_caps_prompt() -> None:
+    class CapturingMeshyClient(HttpxMeshyClient):
+        def __init__(self) -> None:
+            super().__init__(base_url="https://example.test/openapi/v2")
+            self.payload: dict[str, Any] | None = None
+
+        def _request_json(self, method: str, url: str, json: dict[str, Any] | None = None) -> dict[str, Any]:
+            self.payload = json
+            return {"result": "provider-task-1"}
+
+    payload = spec_payload()
+    payload["meshy_prompt"] = "x" * 800
+    client = CapturingMeshyClient()
+
+    provider_job_id = client.create_preview_task(Spec.model_validate(payload))
+
+    assert provider_job_id == "provider-task-1"
+    assert client.payload is not None
+    assert client.payload["mode"] == "preview"
+    assert client.payload["target_formats"] == ["glb"]
+    assert client.payload["target_polycount"] == 100_000
+    assert len(client.payload["prompt"]) == 600
+    assert "art_style" not in client.payload
 
 
 def test_processing_status_is_reported_without_downloading(tmp_path: Path) -> None:

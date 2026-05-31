@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import struct
 import time
 import uuid
 from dataclasses import dataclass
@@ -19,6 +21,7 @@ from .telemetry import LocalTelemetry, elapsed_ms, new_prompt_id, new_session_id
 MESHY_BASE_URL = "https://api.meshy.ai/openapi/v2"
 DEFAULT_TARGET_POLYCOUNT = 100_000
 DEFAULT_MAX_GENERATION_CALLS = 5
+MAX_MESHY_PROMPT_CHARS = 600
 
 JobStatus = Literal["pending", "processing", "ready", "failed"]
 
@@ -50,8 +53,7 @@ class HttpxMeshyClient:
     def create_preview_task(self, spec: Spec) -> str:
         payload = {
             "mode": "preview",
-            "prompt": spec.meshy_prompt,
-            "art_style": _art_style(spec.style),
+            "prompt": _meshy_prompt(spec),
             "target_polycount": DEFAULT_TARGET_POLYCOUNT,
             "target_formats": ["glb"],
         }
@@ -278,19 +280,14 @@ class GenerationService:
             checksum_sha256=checksum,
             format="glb",
             file_size_bytes=len(glb_bytes),
-            triangle_count=_int_or_zero(task.get("triangle_count")),
+            triangle_count=_triangle_count_from_glb(glb_bytes),
             texture_count=_texture_count(task),
             created_at=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         )
 
 
-def _art_style(style: str) -> str:
-    normalized = style.strip().lower()
-    if normalized in {"sculpture", "pbr", "realistic", "cartoon", "low-poly"}:
-        return normalized
-    if normalized in {"medieval", "modern", "futuristic", "wooden", "stone"}:
-        return "realistic"
-    return "realistic"
+def _meshy_prompt(spec: Spec) -> str:
+    return spec.meshy_prompt[:MAX_MESHY_PROMPT_CHARS]
 
 
 def _glb_url(task: dict[str, Any]) -> str | None:
@@ -301,13 +298,74 @@ def _glb_url(task: dict[str, Any]) -> str | None:
     return glb if isinstance(glb, str) and glb else None
 
 
-def _int_or_zero(value: Any) -> int:
-    return value if isinstance(value, int) else 0
-
-
 def _texture_count(task: dict[str, Any]) -> int:
     textures = task.get("texture_urls")
     return len(textures) if isinstance(textures, list) else 0
+
+
+def _triangle_count_from_glb(glb_bytes: bytes) -> int:
+    try:
+        gltf = _glb_json(glb_bytes)
+    except (json.JSONDecodeError, struct.error, UnicodeDecodeError):
+        return 0
+    if not isinstance(gltf, dict):
+        return 0
+
+    meshes = gltf.get("meshes")
+    accessors = gltf.get("accessors")
+    if not isinstance(meshes, list) or not isinstance(accessors, list):
+        return 0
+
+    triangles = 0
+    for mesh in meshes:
+        if not isinstance(mesh, dict):
+            continue
+        primitives = mesh.get("primitives")
+        if not isinstance(primitives, list):
+            continue
+        for primitive in primitives:
+            if not isinstance(primitive, dict) or primitive.get("mode", 4) != 4:
+                continue
+            count = _primitive_vertex_count(primitive, accessors)
+            if count > 0:
+                triangles += count // 3
+    return triangles
+
+
+def _primitive_vertex_count(primitive: dict[str, Any], accessors: list[Any]) -> int:
+    indices = primitive.get("indices")
+    if isinstance(indices, int) and 0 <= indices < len(accessors):
+        accessor = accessors[indices]
+        if isinstance(accessor, dict) and isinstance(accessor.get("count"), int):
+            return accessor["count"]
+
+    attributes = primitive.get("attributes")
+    position = attributes.get("POSITION") if isinstance(attributes, dict) else None
+    if isinstance(position, int) and 0 <= position < len(accessors):
+        accessor = accessors[position]
+        if isinstance(accessor, dict) and isinstance(accessor.get("count"), int):
+            return accessor["count"]
+    return 0
+
+
+def _glb_json(glb_bytes: bytes) -> Any:
+    if len(glb_bytes) < 20:
+        return {}
+    magic, version, length = struct.unpack_from("<4sII", glb_bytes, 0)
+    if magic != b"glTF" or version != 2 or length > len(glb_bytes):
+        return {}
+
+    offset = 12
+    while offset + 8 <= length:
+        chunk_length, chunk_type = struct.unpack_from("<II", glb_bytes, offset)
+        offset += 8
+        chunk_end = offset + chunk_length
+        if chunk_end > length:
+            return {}
+        if chunk_type == 0x4E4F534A:
+            return json.loads(glb_bytes[offset:chunk_end].decode("utf-8").rstrip(" \t\r\n\x00"))
+        offset = chunk_end
+    return {}
 
 
 def _max_generation_calls_from_env() -> int:
