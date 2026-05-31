@@ -18,12 +18,10 @@ namespace Oasis.Import
             if (body == null)
                 body = importedRoot.AddComponent<Rigidbody>();
 
-            body.useGravity = true;
-            body.isKinematic = true;
+            ConfigureAuthoredTransformBody(body);
             body.mass = Mathf.Max(1f, bounds.size.x * bounds.size.y * bounds.size.z * 12f);
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
             body.interpolation = RigidbodyInterpolation.Interpolate;
-            body.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
         }
 
         public static void EnablePlacedPhysics(GameObject placedRoot)
@@ -35,9 +33,20 @@ namespace Oasis.Import
             if (body == null)
                 return;
 
-            body.isKinematic = false;
-            body.useGravity = true;
-            body.WakeUp();
+            ConfigureAuthoredTransformBody(body);
+            body.Sleep();
+        }
+
+        private static void ConfigureAuthoredTransformBody(Rigidbody body)
+        {
+            if (!body.isKinematic)
+            {
+                body.velocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+            body.useGravity = false;
+            body.isKinematic = true;
+            body.constraints = RigidbodyConstraints.FreezeAll;
         }
 
         private static BoxCollider EnsureBoundsCollider(GameObject importedRoot)

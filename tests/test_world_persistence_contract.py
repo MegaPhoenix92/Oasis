@@ -153,6 +153,11 @@ def _load_world(root: Path, world_id: str) -> tuple[dict, list[dict], list[dict]
     return world, loaded, skipped
 
 
+def _transforms_by_instance(world_or_objects: dict | list[dict]) -> dict[str, dict]:
+    objects = world_or_objects["objects"] if isinstance(world_or_objects, dict) else world_or_objects
+    return {item["instance_id"]: item["transform"] for item in objects}
+
+
 def _sanitize_bundle_filename(display_name: str, fallback_world_id: str) -> str:
     source = display_name or fallback_world_id
     chars: list[str] = []
@@ -238,6 +243,34 @@ def test_world_document_round_trips_with_unknown_scene_settings(tmp_path: Path) 
     assert skipped == []
     assert loaded_world["scene_settings"]["weather"] == {"fog": 0.4}
     assert loaded_world["scene_settings"]["custom"] == ["keep"]
+
+
+def test_load_save_load_preserves_elevated_stacked_object_transforms(tmp_path: Path) -> None:
+    manifest = _manifest()
+    world = _world()
+    world["objects"][0]["transform"] = {
+        "position": {"x": 1.0, "y": 1.25, "z": -2.0},
+        "rotation": {"x": 0.0, "y": 0.3826834, "z": 0.0, "w": 0.9238795},
+        "scale": {"x": 1.0, "y": 1.0, "z": 1.0},
+    }
+    world["objects"][1]["transform"] = {
+        "position": {"x": 1.0, "y": 3.5, "z": -2.0},
+        "rotation": {"x": 0.0, "y": 0.7071068, "z": 0.0, "w": 0.7071068},
+        "scale": {"x": 1.5, "y": 0.75, "z": 1.5},
+    }
+    _save_world(tmp_path, world, {manifest["asset_id"]: manifest}, lambda _: GLB)
+
+    loaded_world, loaded_objects, skipped = _load_world(tmp_path, world["world_id"])
+    assert skipped == []
+    assert _transforms_by_instance(loaded_world) == _transforms_by_instance(loaded_objects)
+
+    loaded_world["updated_at"] = "2026-05-31T00:02:00Z"
+    _save_world(tmp_path, loaded_world, {manifest["asset_id"]: manifest}, lambda _: GLB)
+    reloaded_world, reloaded_objects, skipped = _load_world(tmp_path, world["world_id"])
+
+    assert skipped == []
+    assert _transforms_by_instance(loaded_world) == _transforms_by_instance(reloaded_world)
+    assert _transforms_by_instance(loaded_objects) == _transforms_by_instance(reloaded_objects)
 
 
 def test_uuid_path_safety_and_traversal_rejection(tmp_path: Path) -> None:
