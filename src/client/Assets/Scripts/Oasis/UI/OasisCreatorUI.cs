@@ -184,6 +184,17 @@ namespace Oasis.UI
         private void UpdateUndoRedoButtonInteractivity()
         {
             bool interactable = (currentState != OasisCreatorState.Generating);
+            bool isUiInteractable = interactable && !isVoiceRecording;
+
+            if (generateButton != null)
+            {
+                generateButton.interactable = isUiInteractable;
+            }
+
+            if (promptInputField != null)
+            {
+                promptInputField.interactable = isUiInteractable;
+            }
 
             if (undoButton != null)
             {
@@ -227,11 +238,11 @@ namespace Oasis.UI
 
             if (voiceButton != null)
             {
-                voiceButton.interactable = interactable || isVoiceRecording;
+                voiceButton.interactable = (currentState != OasisCreatorState.Generating) || isVoiceRecording;
                 Image img = voiceButton.GetComponent<Image>();
                 if (img != null)
                 {
-                    img.color = isVoiceRecording ? new Color(0.9f, 0.2f, 0.2f, 1f) : (interactable ? new Color(0.15f, 0.5f, 0.55f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f));
+                    img.color = isVoiceRecording ? new Color(0.9f, 0.2f, 0.2f, 1f) : ((currentState != OasisCreatorState.Generating) ? new Color(0.15f, 0.5f, 0.55f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f));
                 }
             }
         }
@@ -274,7 +285,15 @@ namespace Oasis.UI
                 return;
             }
 
-            voiceClip = Microphone.Start(null, false, voiceMaxSeconds, voiceSampleRate);
+            try
+            {
+                voiceClip = Microphone.Start(null, false, voiceMaxSeconds, voiceSampleRate);
+            }
+            catch (Exception)
+            {
+                voiceClip = null;
+            }
+
             if (voiceClip == null)
             {
                 SetState(OasisCreatorState.Error, "microphone_error");

@@ -16,11 +16,12 @@ class FakeSttClient:
         self.transcript = transcript
         self.paths_seen: list[Path] = []
         self.exists_during_call: list[bool] = []
+        self.content_types_seen: list[str] = []
 
     def transcribe_file(self, audio_path: Path, content_type: str) -> str:
         self.paths_seen.append(audio_path)
         self.exists_during_call.append(audio_path.exists())
-        assert content_type == "audio/wav"
+        self.content_types_seen.append(content_type)
         return self.transcript
 
 
@@ -52,6 +53,7 @@ def test_voice_audio_is_transient_and_temp_file_deleted_after_stt() -> None:
 
     assert response.status_code == 200
     assert response.json() == {"transcript": "add a window"}
+    assert fake.content_types_seen == ["audio/wav"]
     assert fake.exists_during_call == [True]
     assert len(service.deleted_temp_paths) == 1
     assert not service.deleted_temp_paths[0].exists()
@@ -79,6 +81,16 @@ def test_voice_service_sweeps_stale_temp_files_on_startup(tmp_path: Path) -> Non
 
     assert service.swept_temp_paths == [stale]
     assert not stale.exists()
+
+
+def test_voice_suffix_parses_base_mime_type() -> None:
+    fake = FakeSttClient("add a window")
+    service = VoiceService(fake, track_temp_paths=True)
+    audio_base64 = base64.b64encode(b"RIFFmock wav bytes").decode("ascii")
+
+    assert service.transcribe(audio_base64=audio_base64, content_type="Audio/Wav; codecs=1") == "add a window"
+    assert fake.content_types_seen == ["Audio/Wav; codecs=1"]
+    assert fake.paths_seen[0].suffix == ".wav"
 
 
 def test_voice_rejects_empty_or_invalid_payload_with_sanitized_error() -> None:

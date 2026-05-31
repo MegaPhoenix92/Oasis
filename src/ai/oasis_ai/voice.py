@@ -66,6 +66,9 @@ class HttpSttClient:
         except Exception as exc:
             raise VoiceError("provider_error", "Speech-to-text provider request failed.", 502) from exc
 
+        if not isinstance(payload, dict):
+            raise VoiceError("provider_error", "Speech-to-text provider returned an invalid response format.", 502)
+
         transcript = str(payload.get("text", ""))
         return _safe_transcript(transcript)
 
@@ -142,10 +145,14 @@ def _decode_audio(audio_base64: str) -> bytes:
 
 
 def _suffix_for_content_type(content_type: str | None) -> str:
-    if content_type == "audio/wav":
+    if not content_type:
+        return ".audio"
+
+    mime = content_type.split(";")[0].strip().lower()
+    if mime == "audio/wav":
         return ".wav"
-    if content_type == "audio/webm":
+    if mime == "audio/webm":
         return ".webm"
-    if content_type == "audio/mpeg":
+    if mime == "audio/mpeg":
         return ".mp3"
     return ".audio"
