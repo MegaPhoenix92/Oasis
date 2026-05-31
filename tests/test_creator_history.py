@@ -97,15 +97,62 @@ def test_refine_respec_commit_is_atomic_and_preserves_instance_id() -> None:
     assert "ReplaceWorldObject(after)" in apply_refine
     assert "creatorHistory.PushOperation(op)" in apply_refine
     assert "placedWorldObjects.Remove(previousObject)" in apply_refine
-    assert apply_refine.find("creatorHistory.PushOperation(op)") < apply_refine.find("placedWorldObjects.Remove(previousObject)")
+    assert apply_refine.find("ReplaceWorldObject(after)") < apply_refine.find("placedWorldObjects.Remove(previousObject)")
+    assert apply_refine.find("placedWorldObjects.Remove(previousObject)") < apply_refine.find("placedWorldObjects.Add(replacement)")
     assert "gameObjectByInstanceId[instanceId] = replacement" in apply_refine
     assert "creatorUI.SetSelectedObject(instanceId, generatedAsset.Manifest.spec)" in apply_refine
+    assert apply_refine.find("placedWorldObjects.Add(replacement)") < apply_refine.find("gameObjectByInstanceId[instanceId] = replacement")
+    assert apply_refine.find("gameObjectByInstanceId[instanceId] = replacement") < apply_refine.find("creatorUI.SetSelectedObject(instanceId, generatedAsset.Manifest.spec)")
+    assert apply_refine.find("creatorUI.SetSelectedObject(instanceId, generatedAsset.Manifest.spec)") < apply_refine.find("creatorHistory.PushOperation(op)")
+    assert apply_refine.find("creatorHistory.PushOperation(op)") < apply_refine.find("committed = true")
     assert "catch (Exception)" in apply_refine
     assert "ReplaceWorldObject(before)" in apply_refine
+    assert "placedWorldObjects.Remove(replacement)" in apply_refine
+    assert "gameObjectByInstanceId.Remove(instanceId)" in apply_refine
+    assert "placedWorldObjects.Add(previousObject)" in apply_refine
+    assert "gameObjectByInstanceId[instanceId] = previousObject" in apply_refine
+    assert "creatorUI.SetSelectedObject(instanceId, FindAssetSpec(before.asset_id))" in apply_refine
     assert "Destroy(replacement)" in apply_refine
+    assert "PurgeUnreferencedInSessionAssets()" in apply_refine
     assert "FinishRespec(instanceId)" in apply_refine
+    assert "if (committed)" in apply_refine
+    assert "Destroy(previousObject)" in apply_refine
+    assert apply_refine.find("creatorHistory.PushOperation(op)") < apply_refine.find("if (committed)")
     assert "lock (respecInFlightLock)" in bootstrap_content
     assert "creatorUI.ClearSelectedObject(instanceId)" in bootstrap_content
+
+
+def test_in_session_assets_are_purged_after_history_changes() -> None:
+    bootstrap_content = (SCENE_DIR / "OasisSceneBootstrap.cs").read_text(encoding="utf-8")
+
+    purge_start = bootstrap_content.find("private void PurgeUnreferencedInSessionAssets()")
+    push_start = bootstrap_content.find("private void PushCreatorOperation")
+    try_begin_start = bootstrap_content.find("private bool TryBeginRespec")
+    assert purge_start != -1
+    assert push_start != -1
+    assert try_begin_start != -1
+
+    purge_content = bootstrap_content[purge_start:push_start]
+    assert "manifestJsonByAssetId.Keys" in purge_content
+    assert "glbBytesByAssetId.Keys" in purge_content
+    assert "CanEvictInSessionAsset(assetId)" in purge_content
+    assert "manifestJsonByAssetId.Remove(assetId)" in purge_content
+    assert "glbBytesByAssetId.Remove(assetId)" in purge_content
+
+    can_evict_start = bootstrap_content.find("private bool CanEvictInSessionAsset")
+    can_evict_content = bootstrap_content[can_evict_start:purge_start]
+    assert "foreach (OasisWorldObject obj in activeWorld.objects)" in can_evict_content
+    assert "obj.asset_id == assetId" in can_evict_content
+    assert "creatorHistory.ReferencesAsset(assetId)" in can_evict_content
+
+    push_content = bootstrap_content[push_start:try_begin_start]
+    assert "creatorHistory.PushOperation(op)" in push_content
+    assert push_content.find("creatorHistory.PushOperation(op)") < push_content.find("PurgeUnreferencedInSessionAssets()")
+    assert push_content.find("PurgeUnreferencedInSessionAssets()") < push_content.find("UpdateUndoRedoUI()")
+
+    assert bootstrap_content.count("PushCreatorOperation(op)") >= 3
+    assert "public async Task UndoAsync()" in bootstrap_content
+    assert "public async Task RedoAsync()" in bootstrap_content
 
 
 def test_undo_redo_do_not_reference_generation_or_network_or_paths() -> None:
