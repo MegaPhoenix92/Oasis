@@ -20,6 +20,9 @@ namespace Oasis.Scene
         private OasisGenerationFacade.GeneratedOasisAsset activeAsset;
         private OasisWorldDocument activeWorld;
         private readonly Dictionary<string, string> manifestJsonByAssetId = new Dictionary<string, string>();
+        private readonly Dictionary<string, byte[]> glbBytesByAssetId = new Dictionary<string, byte[]>();
+        private readonly Dictionary<string, GameObject> gameObjectByInstanceId = new Dictionary<string, GameObject>();
+        private readonly OasisCreatorHistory creatorHistory = new OasisCreatorHistory();
         private readonly List<GameObject> placedWorldObjects = new List<GameObject>();
 
         private void Awake()
@@ -44,7 +47,10 @@ namespace Oasis.Scene
             creatorUI = gameObject.AddComponent<OasisCreatorUI>();
             creatorUI.OnGenerationReady += HandleGenerationReady;
             creatorUI.OnPlaceRequested += HandlePlaceRequested;
+            creatorUI.OnUndoRequested += HandleUndoRequested;
+            creatorUI.OnRedoRequested += HandleRedoRequested;
             activeWorld = CreateNewWorldDocument("Untitled World");
+            UpdateUndoRedoUI();
             CreateLighting();
             CreateCamera(target.transform);
 
@@ -61,9 +67,279 @@ namespace Oasis.Scene
 
             activeAsset = asset;
             manifestJsonByAssetId[asset.Manifest.asset_id] = asset.ManifestJson;
+            glbBytesByAssetId[asset.Manifest.asset_id] = asset.GlbBytes;
             activeImportedObject = await glbImporter.ImportFromBytesAsync(asset.GlbBytes, asset.ManifestJson, placementAnchor.LastGroundPoint);
             if (activeImportedObject != null && creatorUI != null)
                 creatorUI.RecordAssetImported(asset.Manifest.asset_id);
+        }
+
+        private void UpdateUndoRedoUI()
+        {
+            if (creatorUI != null)
+            {
+                creatorUI.SetUndoRedoStates(creatorHistory.UndoCount > 0, creatorHistory.RedoCount > 0);
+            }
+        }
+
+        private async void HandleUndoRequested()
+        {
+            await UndoAsync();
+        }
+
+        private async void HandleRedoRequested()
+        {
+            await RedoAsync();
+        }
+
+        public async Task UndoAsync()
+        {
+            OasisCreatorOperation op = creatorHistory.PopUndo();
+            if (op == null) return;
+
+            if (op.type == "place")
+            {
+                DeleteObjectInMemory(op.snapshot.instance_id);
+            }
+            else if (op.type == "delete")
+            {
+                await RestoreObjectInMemoryAsync(op.snapshot);
+            }
+            else if (op.type == "move")
+            {
+                RestoreMoveInMemory(op.instance_id, op.from);
+            }
+
+            UpdateUndoRedoUI();
+        }
+
+        public async Task RedoAsync()
+        {
+            OasisCreatorOperation op = creatorHistory.PopRedo();
+            if (op == null) return;
+
+            if (op.type == "place")
+            {
+                await RestoreObjectInMemoryAsync(op.snapshot);
+            }
+            else if (op.type == "delete")
+            {
+                DeleteObjectInMemory(op.snapshot.instance_id);
+            }
+            else if (op.type == "move")
+            {
+                RestoreMoveInMemory(op.instance_id, op.to);
+            }
+
+            UpdateUndoRedoUI();
+        }
+
+        private void DeleteObjectInMemory(string instanceId)
+        {
+            if (gameObjectByInstanceId.TryGetValue(instanceId, out GameObject obj))
+            {
+                if (obj != null)
+                {
+                    placedWorldObjects.Remove(obj);
+                    Destroy(obj);
+                }
+                gameObjectByInstanceId.Remove(instanceId);
+            }
+
+            if (activeWorld != null && activeWorld.objects != null)
+            {
+                List<OasisWorldObject> objects = new List<OasisWorldObject>(activeWorld.objects);
+                objects.RemoveAll(o => o.instance_id == instanceId);
+                activeWorld.objects = objects.ToArray();
+            }
+        }
+
+        private async Task RestoreObjectInMemoryAsync(OasisWorldObject snapshot)
+        {
+            if (snapshot == null) return;
+
+            if (glbBytesByAssetId.TryGetValue(snapshot.asset_id, out byte[] glbBytes) &&
+                manifestJsonByAssetId.TryGetValue(snapshot.asset_id, out string manifestJson))
+            {
+                GameObject obj = await glbImporter.ImportFromBytesAsync(glbBytes, manifestJson, Vector3.zero);
+                if (obj != null)
+                {
+                    ApplyTransform(obj.transform, snapshot.transform);
+                    obj.name = "OasisObject_" + snapshot.instance_id;
+                    
+                    OasisWorldObjectBehaviour behaviour = obj.AddComponent<OasisWorldObjectBehaviour>();
+                    behaviour.instanceId = snapshot.instance_id;
+                    behaviour.assetId = snapshot.asset_id;
+
+                    placedWorldObjects.Add(obj);
+                    gameObjectByInstanceId[snapshot.instance_id] = obj;
+                }
+            }
+
+            if (activeWorld != null)
+            {
+                List<OasisWorldObject> objects = new List<OasisWorldObject>(activeWorld.objects ?? Array.Empty<OasisWorldObject>());
+                bool exists = false;
+                foreach (OasisWorldObject o in objects)
+                {
+                    if (o.instance_id == snapshot.instance_id)
+                    {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists)
+                {
+                    objects.Add(CloneWorldObject(snapshot));
+                    activeWorld.objects = objects.ToArray();
+                }
+            }
+        }
+
+        private void RestoreMoveInMemory(string instanceId, OasisWorldTransform targetTransform)
+        {
+            if (gameObjectByInstanceId.TryGetValue(instanceId, out GameObject obj))
+            {
+                if (obj != null)
+                {
+                    ApplyTransform(obj.transform, targetTransform);
+                }
+            }
+            UpdateTransformInWorld(instanceId, targetTransform);
+        }
+
+        private void UpdateTransformInWorld(string instanceId, OasisWorldTransform newTransform)
+        {
+            if (activeWorld != null && activeWorld.objects != null)
+            {
+                foreach (OasisWorldObject obj in activeWorld.objects)
+                {
+                    if (obj.instance_id == instanceId)
+                    {
+                        obj.transform.position.x = newTransform.position.x;
+                        obj.transform.position.y = newTransform.position.y;
+                        obj.transform.position.z = newTransform.position.z;
+
+                        obj.transform.rotation.x = newTransform.rotation.x;
+                        obj.transform.rotation.y = newTransform.rotation.y;
+                        obj.transform.rotation.z = newTransform.rotation.z;
+                        obj.transform.rotation.w = newTransform.rotation.w;
+
+                        obj.transform.scale.x = newTransform.scale.x;
+                        obj.transform.scale.y = newTransform.scale.y;
+                        obj.transform.scale.z = newTransform.scale.z;
+                        break;
+                    }
+                }
+            }
+        }
+
+        public void PerformMove(string instanceId, OasisWorldTransform toTransform)
+        {
+            if (gameObjectByInstanceId.TryGetValue(instanceId, out GameObject obj))
+            {
+                OasisWorldObject wObj = null;
+                foreach (OasisWorldObject o in activeWorld.objects)
+                {
+                    if (o.instance_id == instanceId)
+                    {
+                        wObj = o;
+                        break;
+                    }
+                }
+
+                if (wObj != null)
+                {
+                    OasisCreatorOperation op = new OasisCreatorOperation
+                    {
+                        type = "move",
+                        instance_id = instanceId,
+                        from = CloneWorldTransform(wObj.transform),
+                        to = CloneWorldTransform(toTransform)
+                    };
+
+                    if (obj != null)
+                    {
+                        ApplyTransform(obj.transform, toTransform);
+                    }
+                    UpdateTransformInWorld(instanceId, toTransform);
+
+                    creatorHistory.PushOperation(op);
+                    UpdateUndoRedoUI();
+                }
+            }
+        }
+
+        public void PerformDelete(string instanceId)
+        {
+            OasisWorldObject wObj = null;
+            foreach (OasisWorldObject o in activeWorld.objects)
+            {
+                if (o.instance_id == instanceId)
+                {
+                    wObj = o;
+                    break;
+                }
+            }
+
+            if (wObj != null)
+            {
+                OasisCreatorOperation op = new OasisCreatorOperation
+                {
+                    type = "delete",
+                    snapshot = CloneWorldObject(wObj)
+                };
+
+                DeleteObjectInMemory(instanceId);
+
+                creatorHistory.PushOperation(op);
+                UpdateUndoRedoUI();
+            }
+        }
+
+        private static void ApplyTransform(Transform unityTransform, OasisWorldTransform docTransform)
+        {
+            unityTransform.position = new Vector3(docTransform.position.x, docTransform.position.y, docTransform.position.z);
+            unityTransform.rotation = new Quaternion(docTransform.rotation.x, docTransform.rotation.y, docTransform.rotation.z, docTransform.rotation.w);
+            unityTransform.localScale = new Vector3(docTransform.scale.x, docTransform.scale.y, docTransform.scale.z);
+        }
+
+        private static OasisWorldTransform CloneWorldTransform(OasisWorldTransform src)
+        {
+            if (src == null) return null;
+            return new OasisWorldTransform
+            {
+                position = new OasisWorldVector3 { x = src.position.x, y = src.position.y, z = src.position.z },
+                rotation = new OasisWorldQuaternion { x = src.rotation.x, y = src.rotation.y, z = src.rotation.z, w = src.rotation.w },
+                scale = new OasisWorldVector3 { x = src.scale.x, y = src.scale.y, z = src.scale.z }
+            };
+        }
+
+        private static OasisWorldObject CloneWorldObject(OasisWorldObject src)
+        {
+            if (src == null) return null;
+            return new OasisWorldObject
+            {
+                instance_id = src.instance_id,
+                asset_id = src.asset_id,
+                created_at = src.created_at,
+                transform = CloneWorldTransform(src.transform)
+            };
+        }
+
+        private OasisWorldObject CreateWorldObject(string instanceId, string assetId, Transform placedTransform)
+        {
+            return new OasisWorldObject
+            {
+                instance_id = instanceId,
+                asset_id = assetId,
+                created_at = NowIso(),
+                transform = new OasisWorldTransform
+                {
+                    position = new OasisWorldVector3 { x = placedTransform.position.x, y = placedTransform.position.y, z = placedTransform.position.z },
+                    rotation = new OasisWorldQuaternion { x = placedTransform.rotation.x, y = placedTransform.rotation.y, z = placedTransform.rotation.z, w = placedTransform.rotation.w },
+                    scale = new OasisWorldVector3 { x = placedTransform.localScale.x, y = placedTransform.localScale.y, z = placedTransform.localScale.z }
+                }
+            };
         }
 
         private void HandlePlaceRequested()
@@ -72,11 +348,33 @@ namespace Oasis.Scene
                 return;
 
             MoveObjectToAnchor(activeImportedObject, placementAnchor.LastGroundPoint);
-            AddPlacedObjectToWorld(activeImportedObject.transform, activeAsset.Manifest.asset_id);
+            
+            string instanceId = Guid.NewGuid().ToString();
+            OasisWorldObject worldObject = CreateWorldObject(instanceId, activeAsset.Manifest.asset_id, activeImportedObject.transform);
+
+            List<OasisWorldObject> objects = new List<OasisWorldObject>(activeWorld.objects ?? Array.Empty<OasisWorldObject>());
+            objects.Add(worldObject);
+            activeWorld.objects = objects.ToArray();
+
+            activeImportedObject.name = "OasisObject_" + instanceId;
+            OasisWorldObjectBehaviour behaviour = activeImportedObject.AddComponent<OasisWorldObjectBehaviour>();
+            behaviour.instanceId = instanceId;
+            behaviour.assetId = activeAsset.Manifest.asset_id;
+
             placedWorldObjects.Add(activeImportedObject);
+            gameObjectByInstanceId[instanceId] = activeImportedObject;
+
+            OasisCreatorOperation op = new OasisCreatorOperation
+            {
+                type = "place",
+                snapshot = CloneWorldObject(worldObject)
+            };
+            creatorHistory.PushOperation(op);
+            UpdateUndoRedoUI();
+
             if (creatorUI != null)
                 creatorUI.RecordObjectPlaced(activeAsset.Manifest.asset_id);
-            Debug.Log($"Oasis asset placed in scene: asset_id={activeAsset.Manifest.asset_id}, point={placementAnchor.LastGroundPoint}");
+            Debug.Log($"Oasis asset placed in scene: asset_id={activeAsset.Manifest.asset_id}, point={placementAnchor.LastGroundPoint}, instance_id={instanceId}");
             activeImportedObject = null;
             activeAsset = null;
         }
@@ -99,9 +397,41 @@ namespace Oasis.Scene
                 DestroyActiveSceneObjects();
                 activeWorld = result.Document;
                 manifestJsonByAssetId.Clear();
+                glbBytesByAssetId.Clear();
+                gameObjectByInstanceId.Clear();
+                creatorHistory.Clear();
+
                 foreach (KeyValuePair<string, string> entry in result.ManifestJsonByAssetId)
                     manifestJsonByAssetId[entry.Key] = entry.Value;
-                placedWorldObjects.AddRange(result.ImportedObjects);
+
+                foreach (KeyValuePair<string, byte[]> entry in result.GlbBytesByAssetId)
+                    glbBytesByAssetId[entry.Key] = entry.Value;
+
+                foreach (GameObject obj in result.ImportedObjects)
+                {
+                    if (obj != null && obj.name.StartsWith("OasisObject_"))
+                    {
+                        string instanceId = obj.name.Substring("OasisObject_".Length);
+                        
+                        string assetId = "";
+                        foreach (OasisWorldObject wObj in activeWorld.objects)
+                        {
+                            if (wObj.instance_id == instanceId)
+                            {
+                                assetId = wObj.asset_id;
+                                break;
+                            }
+                        }
+
+                        OasisWorldObjectBehaviour behaviour = obj.AddComponent<OasisWorldObjectBehaviour>();
+                        behaviour.instanceId = instanceId;
+                        behaviour.assetId = assetId;
+
+                        placedWorldObjects.Add(obj);
+                        gameObjectByInstanceId[instanceId] = obj;
+                    }
+                }
+                UpdateUndoRedoUI();
             }
             return result;
         }
@@ -121,26 +451,7 @@ namespace Oasis.Scene
                     Destroy(placedObject);
             }
             placedWorldObjects.Clear();
-        }
-
-        private void AddPlacedObjectToWorld(Transform placedTransform, string assetId)
-        {
-            OasisWorldObject worldObject = new OasisWorldObject
-            {
-                instance_id = Guid.NewGuid().ToString(),
-                asset_id = assetId,
-                created_at = NowIso(),
-                transform = new OasisWorldTransform
-                {
-                    position = new OasisWorldVector3 { x = placedTransform.position.x, y = placedTransform.position.y, z = placedTransform.position.z },
-                    rotation = new OasisWorldQuaternion { x = placedTransform.rotation.x, y = placedTransform.rotation.y, z = placedTransform.rotation.z, w = placedTransform.rotation.w },
-                    scale = new OasisWorldVector3 { x = placedTransform.localScale.x, y = placedTransform.localScale.y, z = placedTransform.localScale.z }
-                }
-            };
-
-            List<OasisWorldObject> objects = new List<OasisWorldObject>(activeWorld.objects ?? Array.Empty<OasisWorldObject>());
-            objects.Add(worldObject);
-            activeWorld.objects = objects.ToArray();
+            gameObjectByInstanceId.Clear();
         }
 
         private static OasisWorldDocument CreateNewWorldDocument(string worldName)
