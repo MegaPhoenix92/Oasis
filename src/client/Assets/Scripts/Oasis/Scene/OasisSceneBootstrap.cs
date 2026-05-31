@@ -1,4 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Oasis.Import;
+using Oasis.Persistence;
 using Oasis.UI;
 using UnityEngine;
 
@@ -9,9 +14,12 @@ namespace Oasis.Scene
         [SerializeField] private Material groundMaterial;
         private OasisPlacementAnchor placementAnchor;
         private OasisGlbImporter glbImporter;
+        private OasisWorldPersistence worldPersistence;
         private OasisCreatorUI creatorUI;
         private GameObject activeImportedObject;
         private OasisGenerationFacade.GeneratedOasisAsset activeAsset;
+        private OasisWorldDocument activeWorld;
+        private readonly Dictionary<string, string> manifestJsonByAssetId = new Dictionary<string, string>();
 
         private void Awake()
         {
@@ -31,9 +39,11 @@ namespace Oasis.Scene
 
             gameObject.AddComponent<OasisGridOverlay>();
             glbImporter = gameObject.AddComponent<OasisGlbImporter>();
+            worldPersistence = gameObject.AddComponent<OasisWorldPersistence>();
             creatorUI = gameObject.AddComponent<OasisCreatorUI>();
             creatorUI.OnGenerationReady += HandleGenerationReady;
             creatorUI.OnPlaceRequested += HandlePlaceRequested;
+            activeWorld = CreateNewWorldDocument("Untitled World");
             CreateLighting();
             CreateCamera(target.transform);
 
@@ -49,6 +59,7 @@ namespace Oasis.Scene
                 Destroy(activeImportedObject);
 
             activeAsset = asset;
+            manifestJsonByAssetId[asset.Manifest.asset_id] = asset.ManifestJson;
             activeImportedObject = await glbImporter.ImportFromBytesAsync(asset.GlbBytes, asset.ManifestJson, placementAnchor.LastGroundPoint);
             if (activeImportedObject != null && creatorUI != null)
                 creatorUI.RecordAssetImported(asset.Manifest.asset_id);
@@ -60,9 +71,73 @@ namespace Oasis.Scene
                 return;
 
             MoveObjectToAnchor(activeImportedObject, placementAnchor.LastGroundPoint);
+            AddPlacedObjectToWorld(activeImportedObject.transform, activeAsset.Manifest.asset_id);
             if (creatorUI != null)
                 creatorUI.RecordObjectPlaced(activeAsset.Manifest.asset_id);
             Debug.Log($"Oasis asset placed in scene: asset_id={activeAsset.Manifest.asset_id}, point={placementAnchor.LastGroundPoint}");
+        }
+
+        public Task<OasisWorldPersistenceFailure> SaveActiveWorldAsync(CancellationToken cancellationToken = default)
+        {
+            activeWorld.updated_at = NowIso();
+            return worldPersistence.SaveAsync(
+                activeWorld,
+                manifestJsonByAssetId,
+                new OasisHttpAssetFetcher(creatorUI != null ? creatorUI.backendBaseUrl : "http://localhost:8000"),
+                cancellationToken);
+        }
+
+        public async Task<OasisWorldLoadResult> LoadWorldAsync(string worldId, CancellationToken cancellationToken = default)
+        {
+            OasisWorldLoadResult result = await worldPersistence.LoadAsync(worldId, glbImporter, cancellationToken);
+            if (result.Success && result.Document != null)
+            {
+                activeWorld = result.Document;
+                manifestJsonByAssetId.Clear();
+                foreach (KeyValuePair<string, string> entry in result.ManifestJsonByAssetId)
+                    manifestJsonByAssetId[entry.Key] = entry.Value;
+            }
+            return result;
+        }
+
+        private void AddPlacedObjectToWorld(Transform placedTransform, string assetId)
+        {
+            OasisWorldObject worldObject = new OasisWorldObject
+            {
+                instance_id = Guid.NewGuid().ToString(),
+                asset_id = assetId,
+                created_at = NowIso(),
+                transform = new OasisWorldTransform
+                {
+                    position = new OasisWorldVector3 { x = placedTransform.position.x, y = placedTransform.position.y, z = placedTransform.position.z },
+                    rotation = new OasisWorldQuaternion { x = placedTransform.rotation.x, y = placedTransform.rotation.y, z = placedTransform.rotation.z, w = placedTransform.rotation.w },
+                    scale = new OasisWorldVector3 { x = placedTransform.localScale.x, y = placedTransform.localScale.y, z = placedTransform.localScale.z }
+                }
+            };
+
+            List<OasisWorldObject> objects = new List<OasisWorldObject>(activeWorld.objects ?? Array.Empty<OasisWorldObject>());
+            objects.Add(worldObject);
+            activeWorld.objects = objects.ToArray();
+        }
+
+        private static OasisWorldDocument CreateNewWorldDocument(string worldName)
+        {
+            string now = NowIso();
+            return new OasisWorldDocument
+            {
+                schema_version = "1.0",
+                world_id = Guid.NewGuid().ToString(),
+                name = string.IsNullOrWhiteSpace(worldName) ? "Untitled World" : worldName,
+                created_at = now,
+                updated_at = now,
+                scene_settings_json = "{ \"time_of_day\": 0.5 }",
+                objects = Array.Empty<OasisWorldObject>()
+            };
+        }
+
+        private static string NowIso()
+        {
+            return DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
         }
 
         private static void MoveObjectToAnchor(GameObject importedRoot, Vector3 groundAnchor)
