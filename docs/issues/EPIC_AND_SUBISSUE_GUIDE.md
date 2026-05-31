@@ -134,6 +134,13 @@ The complete roadmap backlog now exists on GitHub — built by reconciling an in
 
 Each maps to features in [`../scope/MVP_SCOPE_DOCUMENT.md`](../scope/MVP_SCOPE_DOCUMENT.md) and phases/gates in [`../ROADMAP.md`](../ROADMAP.md). New work attaches under the relevant existing epic via `add_sub` (§4).
 
+**Build-hardening pass (2026-05-30, from a Codex gap-analysis, filtered create-not-fold):**
+- **[GATE 0] #72** — Phase-1 *kickoff readiness* (entry gate; sits **top-level** alongside #25/#47, not under an epic).
+- **#73** Golden prompt suite (→ #11) — fixes the corpus the Gate 1→2 metrics are measured against.
+- **#74** Deterministic fixture asset for offline import tests (→ #12).
+- **#75** PR/issue templates + Definition of Done (→ #65).
+- *Folded in (no new issue):* telemetry event schema → **#24**; asset validation/provenance contract → **#7**.
+
 ---
 
 ## 8. Bootstrap checklist (completed 2026-05-30)
@@ -141,7 +148,7 @@ Each maps to features in [`../scope/MVP_SCOPE_DOCUMENT.md`](../scope/MVP_SCOPE_D
 - [x] Labels created (§5) — incl. `epic`, `phase:1/2/3`, `gate`
 - [x] Phase-1 epics created and linked under #9 (§3)
 - [x] #1–#8 linked under the right epics via `add_sub` (§4) — none recreated
-- [x] Full forward backlog created (§7): 23 epics, 2 gates, 3 capstones, ~40 tasks
+- [x] Full forward backlog created (§7): 23 epics, 3 gates (incl. [GATE 0] kickoff #72), 3 capstones, ~44 tasks
 - [x] Every task carries a `phase:*` + `delegate:*` label
 
 Ongoing rule for new work: attach under the relevant existing epic via `add_sub`; never recreate existing issues.
