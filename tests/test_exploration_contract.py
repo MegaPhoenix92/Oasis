@@ -54,7 +54,7 @@ def test_first_person_controller_is_runtime_local_and_bootstrapped() -> None:
         assert term not in controller
 
 
-def test_post_normalization_colliders_and_gravity_are_attached_after_placement_math() -> None:
+def test_post_normalization_colliders_and_kinematic_bodies_are_attached_after_placement_math() -> None:
     importer = _read(IMPORT_DIR / "OasisGlbImporter.cs")
     physics = _read(IMPORT_DIR / "OasisPlacedAssetPhysics.cs")
 
@@ -66,16 +66,26 @@ def test_post_normalization_colliders_and_gravity_are_attached_after_placement_m
 
     assert "TryGetPostImportRendererBounds" in physics
     assert "GetComponentsInChildren<Renderer>()" in physics
-    assert "BoxCollider" in physics
     assert "Rigidbody" in physics
-    assert "body.useGravity = true" in physics
+    assert "body.useGravity = false" in physics
     assert "body.isKinematic = true" in physics
     assert "EnablePlacedPhysics" in physics
-    assert "body.isKinematic = false" in physics
+    assert "body.isKinematic = false" not in physics
+    assert "RigidbodyConstraints.FreezeAll" in physics
+    assert "body.WakeUp()" not in physics
     assert "sourceBounds" not in physics
 
-    enable_method = _method_slice(physics, "public static void EnablePlacedPhysics", "private static BoxCollider EnsureBoundsCollider")
+    configure_post_import = _method_slice(
+        physics,
+        "public static void ConfigurePostImport",
+        "public static void EnablePlacedPhysics",
+    )
+    assert "BoxCollider collider = EnsureBoundsCollider(importedRoot)" in configure_post_import
+    assert "collider.isTrigger = false" in configure_post_import
+
+    enable_method = _method_slice(physics, "public static void EnablePlacedPhysics", "private static void ConfigureAuthoredTransformBody")
     assert "ConfigurePostImport" not in enable_method
+    assert "ConfigureAuthoredTransformBody(body)" in enable_method
 
 
 def test_scene_bootstrap_enables_placed_physics_without_schema_changes() -> None:
@@ -83,7 +93,7 @@ def test_scene_bootstrap_enables_placed_physics_without_schema_changes() -> None
     document = _read(PERSISTENCE_DIR / "OasisWorldDocument.cs")
 
     assert "OasisPlacedAssetPhysics.EnablePlacedPhysics(activeImportedObject)" in bootstrap
-    assert "OasisPlacedAssetPhysics.EnablePlacedPhysics(obj)" in bootstrap
+    assert bootstrap.count("OasisPlacedAssetPhysics.EnablePlacedPhysics(obj)") == 2
     assert "SyncWorldTransformsFromScene()" in bootstrap
 
     assert "Rigidbody" not in document
