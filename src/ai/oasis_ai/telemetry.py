@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import hashlib
 import time
 import uuid
 from datetime import UTC, datetime
@@ -21,6 +23,22 @@ M1_EVENTS = {
     "object_placed",
     "flow_failed",
 }
+
+SAFE_ERROR_CODES = {
+    "",
+    "asset_invalid",
+    "asset_not_found",
+    "invalid_prompt",
+    "microphone_error",
+    "model_parse_error",
+    "network_error",
+    "provider_error",
+    "spend_guard_exceeded",
+    "timeout",
+}
+
+SAFE_PROVIDERS = {"", "anthropic", "meshy.ai", "refine", "unity", "voice"}
+SAFE_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 class LocalTelemetry:
@@ -44,12 +62,12 @@ class LocalTelemetry:
 
         record: dict[str, Any] = {
             "event": event,
-            "session_id": session_id,
-            "prompt_id": prompt_id,
-            "provider": provider,
+            "session_id": safe_identifier(session_id),
+            "prompt_id": safe_identifier(prompt_id),
+            "provider": safe_provider(provider),
             "elapsed_ms": max(0, int(elapsed_ms)),
-            "error_code": error_code,
-            "asset_id": asset_id,
+            "error_code": safe_error_code(error_code),
+            "asset_id": safe_identifier(asset_id),
             "created_at": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         }
         self.jsonl_path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,6 +85,27 @@ def new_prompt_id() -> str:
 
 def elapsed_ms(started_at: float) -> int:
     return int((time.monotonic() - started_at) * 1000)
+
+
+def safe_identifier(value: str) -> str:
+    if value == "":
+        return ""
+    lowered = value.lower()
+    if "sk-" in lowered or "api_key" in lowered or "secret" in lowered or "bearer " in lowered or "@" in value:
+        return "sha256:" + hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:16]
+    if SAFE_TOKEN_PATTERN.fullmatch(value):
+        return value
+    return "sha256:" + hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()[:16]
+
+
+def safe_provider(provider: str) -> str:
+    normalized = provider.strip().lower()
+    return normalized if normalized in SAFE_PROVIDERS else ""
+
+
+def safe_error_code(error_code: str) -> str:
+    normalized = error_code.strip().lower()
+    return normalized if normalized in SAFE_ERROR_CODES else "provider_error"
 
 
 def _telemetry_path() -> Path:

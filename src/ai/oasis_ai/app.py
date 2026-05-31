@@ -8,7 +8,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from .generation import GenerationError, GenerationService, HttpxMeshyClient
-from .models import ErrorResponse, GenerateResponse, JobResponse, PromptRequest, RefineRequest, RefineResult, Spec, VoiceTranscriptRequest, VoiceTranscriptResponse
+from .metrics import UserStudyHookSink, UserStudyObservation
+from .models import ErrorResponse, GenerateResponse, JobResponse, PromptRequest, RefineRequest, RefineResult, Spec, UserStudyObservationRequest, UserStudyObservationResponse, VoiceTranscriptRequest, VoiceTranscriptResponse
 from .service import AnthropicSpecClient, RefineService, SpecError, SpecService
 from .telemetry import LocalTelemetry, elapsed_ms, new_prompt_id, new_session_id
 from .voice import VoiceError, VoiceService
@@ -20,6 +21,7 @@ def create_app(
     refine_service: RefineService | None = None,
     voice_service: VoiceService | None = None,
     telemetry: LocalTelemetry | None = None,
+    user_study_hooks: UserStudyHookSink | None = None,
 ) -> FastAPI:
     api = FastAPI(title="Oasis AI Service", version="0.1.0")
     api.state.spec_service = service or SpecService(AnthropicSpecClient())
@@ -27,6 +29,7 @@ def create_app(
     api.state.generation_service = generation_service or GenerationService(HttpxMeshyClient(), telemetry=api.state.telemetry)
     api.state.refine_service = refine_service or RefineService(api.state.spec_service.client)
     api.state.voice_service = voice_service or VoiceService()
+    api.state.user_study_hooks = user_study_hooks
 
     @api.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -39,8 +42,34 @@ def create_app(
 
     @api.post("/refine", response_model=RefineResult, responses={400: {"model": ErrorResponse}, 502: {"model": ErrorResponse}, 504: {"model": ErrorResponse}})
     def refine(payload: RefineRequest, request: Request) -> RefineResult:
+        started_at = time.monotonic()
+        session_id = new_session_id()
+        prompt_id = new_prompt_id()
+        telemetry_sink: LocalTelemetry = request.app.state.telemetry
+        telemetry_sink.emit("prompt_submitted", session_id=session_id, prompt_id=prompt_id, provider="refine", elapsed_ms=0)
+
         service: RefineService = request.app.state.refine_service
-        return service.refine(payload.prior_spec, payload.directive)
+        try:
+            result = service.refine(payload.prior_spec, payload.directive)
+        except SpecError as exc:
+            telemetry_sink.emit(
+                "flow_failed",
+                session_id=session_id,
+                prompt_id=prompt_id,
+                provider="refine",
+                elapsed_ms=elapsed_ms(started_at),
+                error_code=exc.error_code,
+            )
+            raise
+
+        telemetry_sink.emit(
+            "prompt_structured",
+            session_id=session_id,
+            prompt_id=prompt_id,
+            provider="refine",
+            elapsed_ms=elapsed_ms(started_at),
+        )
+        return result
 
     @api.post(
         "/voice/transcribe",
@@ -48,9 +77,54 @@ def create_app(
         responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}, 502: {"model": ErrorResponse}, 504: {"model": ErrorResponse}},
     )
     def transcribe_voice(payload: VoiceTranscriptRequest, request: Request) -> VoiceTranscriptResponse:
+        started_at = time.monotonic()
+        session_id = new_session_id()
+        prompt_id = new_prompt_id()
+        telemetry_sink: LocalTelemetry = request.app.state.telemetry
+        telemetry_sink.emit("prompt_submitted", session_id=session_id, prompt_id=prompt_id, provider="voice", elapsed_ms=0)
+
         voice: VoiceService = request.app.state.voice_service
-        transcript = voice.transcribe(transcript=payload.transcript, audio_base64=payload.audio_base64, content_type=payload.content_type)
+        try:
+            transcript = voice.transcribe(transcript=payload.transcript, audio_base64=payload.audio_base64, content_type=payload.content_type)
+        except VoiceError as exc:
+            telemetry_sink.emit(
+                "flow_failed",
+                session_id=session_id,
+                prompt_id=prompt_id,
+                provider="voice",
+                elapsed_ms=elapsed_ms(started_at),
+                error_code=exc.error_code,
+            )
+            raise
+
+        telemetry_sink.emit(
+            "prompt_structured",
+            session_id=session_id,
+            prompt_id=prompt_id,
+            provider="voice",
+            elapsed_ms=elapsed_ms(started_at),
+        )
         return VoiceTranscriptResponse(transcript=transcript)
+
+    @api.post(
+        "/metrics/user-study",
+        response_model=UserStudyObservationResponse,
+        responses={422: {"model": ErrorResponse}},
+    )
+    def record_user_study_observation(payload: UserStudyObservationRequest, request: Request) -> UserStudyObservationResponse:
+        hooks: UserStudyHookSink | None = request.app.state.user_study_hooks
+        if hooks is not None:
+            hooks.record(
+                UserStudyObservation(
+                    session_id=payload.session_id,
+                    prompt_id=payload.prompt_id,
+                    flow_completed=payload.flow_completed,
+                    quality_score=payload.quality_score,
+                    voice_intent_correct=payload.voice_intent_correct,
+                    refine_cycles=payload.refine_cycles,
+                )
+            )
+        return UserStudyObservationResponse(status="recorded")
 
     @api.post(
         "/generate",
