@@ -90,7 +90,7 @@ def test_refine_respec_commit_is_atomic_and_preserves_instance_id() -> None:
         bootstrap_content.find("public async Task ApplyRefineRespecAsync"):
         bootstrap_content.find("public void PerformDelete")
     ]
-    assert "inFlightRespecByInstanceId.Contains(instanceId)" in apply_refine
+    assert "TryBeginRespec(instanceId)" in apply_refine
     assert "replacement.name = \"OasisObject_\" + instanceId" in apply_refine
     assert "behaviour.instanceId = instanceId" in apply_refine
     assert "after.asset_id = generatedAsset.Manifest.asset_id" in apply_refine
@@ -98,7 +98,8 @@ def test_refine_respec_commit_is_atomic_and_preserves_instance_id() -> None:
     assert "creatorHistory.PushOperation(op)" in apply_refine
     assert "catch (Exception)" in apply_refine
     assert "ReplaceWorldObject(before)" in apply_refine
-    assert "inFlightRespecByInstanceId.Remove(instanceId)" in apply_refine
+    assert "FinishRespec(instanceId)" in apply_refine
+    assert "lock (respecInFlightLock)" in bootstrap_content
 
 
 def test_undo_redo_do_not_reference_generation_or_network_or_paths() -> None:

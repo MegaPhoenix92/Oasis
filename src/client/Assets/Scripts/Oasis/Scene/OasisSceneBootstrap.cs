@@ -26,6 +26,7 @@ namespace Oasis.Scene
         private readonly Dictionary<string, byte[]> glbBytesByAssetId = new Dictionary<string, byte[]>();
         private readonly Dictionary<string, GameObject> gameObjectByInstanceId = new Dictionary<string, GameObject>();
         private readonly HashSet<string> inFlightRespecByInstanceId = new HashSet<string>();
+        private readonly object respecInFlightLock = new object();
         private readonly OasisCreatorHistory creatorHistory = new OasisCreatorHistory();
         private readonly List<GameObject> placedWorldObjects = new List<GameObject>();
 
@@ -319,14 +320,13 @@ namespace Oasis.Scene
         {
             if (generatedAsset == null || generatedAsset.Manifest == null || string.IsNullOrWhiteSpace(generatedAsset.Manifest.asset_id))
                 return;
-            if (inFlightRespecByInstanceId.Contains(instanceId))
-                return;
 
             OasisWorldObject before = CloneWorldObject(FindWorldObject(instanceId));
             if (before == null)
                 return;
+            if (!TryBeginRespec(instanceId))
+                return;
 
-            inFlightRespecByInstanceId.Add(instanceId);
             GameObject previousObject = gameObjectByInstanceId.TryGetValue(instanceId, out GameObject existing) ? existing : null;
 
             try
@@ -374,7 +374,7 @@ namespace Oasis.Scene
             }
             finally
             {
-                inFlightRespecByInstanceId.Remove(instanceId);
+                FinishRespec(instanceId);
             }
         }
 
@@ -460,6 +460,32 @@ namespace Oasis.Scene
                 }
             }
             return !creatorHistory.ReferencesAsset(assetId);
+        }
+
+        private bool TryBeginRespec(string instanceId)
+        {
+            if (string.IsNullOrWhiteSpace(instanceId))
+                return false;
+
+            lock (respecInFlightLock)
+            {
+                if (inFlightRespecByInstanceId.Contains(instanceId))
+                    return false;
+
+                inFlightRespecByInstanceId.Add(instanceId);
+                return true;
+            }
+        }
+
+        private void FinishRespec(string instanceId)
+        {
+            if (string.IsNullOrWhiteSpace(instanceId))
+                return;
+
+            lock (respecInFlightLock)
+            {
+                inFlightRespecByInstanceId.Remove(instanceId);
+            }
         }
 
         private OasisSpec FindAssetSpec(string assetId)

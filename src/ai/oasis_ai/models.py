@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Dimensions(BaseModel):
@@ -54,9 +55,9 @@ class TransformVector3(BaseModel):
 class TransformScaleFactor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    x: float = Field(gt=0)
-    y: float = Field(gt=0)
-    z: float = Field(gt=0)
+    x: float = Field(ge=0.01)
+    y: float = Field(ge=0.01)
+    z: float = Field(ge=0.01)
 
 
 class TransformQuaternion(BaseModel):
@@ -66,6 +67,13 @@ class TransformQuaternion(BaseModel):
     y: float
     z: float
     w: float
+
+    @model_validator(mode="after")
+    def must_be_unit_quaternion(self) -> "TransformQuaternion":
+        length = math.sqrt((self.x * self.x) + (self.y * self.y) + (self.z * self.z) + (self.w * self.w))
+        if not 0.999 <= length <= 1.001:
+            raise ValueError("rotation_delta must be a unit quaternion")
+        return self
 
 
 class TransformDelta(BaseModel):

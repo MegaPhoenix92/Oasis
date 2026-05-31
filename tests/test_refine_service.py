@@ -20,7 +20,8 @@ class FakeClaudeClient:
 
     def complete(self, prompt: str, normalized_prompt: str, system_prompt: str = "") -> str:
         self.calls.append((prompt, normalized_prompt))
-        assert "classify" in system_prompt.lower()
+        assert "transform" in system_prompt.lower()
+        assert "respec" in system_prompt.lower()
         return self.outputs.pop(0)
 
 
@@ -140,6 +141,52 @@ def test_refine_rejects_bad_directive_and_sanitizes_model_parse_errors(tmp_path:
     malformed_response = malformed.post("/refine", json={"prior_spec": spec_payload(), "directive": "add windows"})
     assert malformed_response.status_code == 502
     assert malformed_response.json() == {
+        "error_code": "model_parse_error",
+        "message": "Claude response did not match the RefineResult schema.",
+    }
+
+
+def test_refine_rejects_unsafe_transform_shape_and_sanitizes_error(tmp_path: Path) -> None:
+    tiny_scale = json.dumps(
+        {
+            "kind": "transform",
+            "transform_delta": {
+                "scale_factor": {"x": 0.001, "y": 1.0, "z": 1.0},
+                "rotation_delta": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+                "translate": {"x": 0.0, "y": 0.0, "z": 0.0},
+            },
+            "rationale": "unsafe tiny axis",
+        }
+    )
+    tiny_response = client_with(FakeClaudeClient([tiny_scale]), tmp_path).post(
+        "/refine",
+        json={"prior_spec": spec_payload(), "directive": "make it almost flat"},
+    )
+
+    assert tiny_response.status_code == 502
+    assert tiny_response.json() == {
+        "error_code": "model_parse_error",
+        "message": "Claude response did not match the RefineResult schema.",
+    }
+
+    non_unit_rotation = json.dumps(
+        {
+            "kind": "transform",
+            "transform_delta": {
+                "scale_factor": {"x": 1.0, "y": 1.0, "z": 1.0},
+                "rotation_delta": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 2.0},
+                "translate": {"x": 0.0, "y": 0.0, "z": 0.0},
+            },
+            "rationale": "bad rotation",
+        }
+    )
+    rotation_response = client_with(FakeClaudeClient([non_unit_rotation]), tmp_path).post(
+        "/refine",
+        json={"prior_spec": spec_payload(), "directive": "turn it strangely"},
+    )
+
+    assert rotation_response.status_code == 502
+    assert rotation_response.json() == {
         "error_code": "model_parse_error",
         "message": "Claude response did not match the RefineResult schema.",
     }
