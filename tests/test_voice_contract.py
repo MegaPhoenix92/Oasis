@@ -22,6 +22,7 @@ def test_voice_backend_is_server_side_stt_adapter_only() -> None:
     assert "self.client = httpx.Client" in voice
     assert "response = self.client.post" in voice
     assert "if not isinstance(payload, dict)" in voice
+    assert "raise ValueError(\"Invalid response format from provider.\")" in voice
     assert "raise VoiceError(\"provider_error\", \"Speech-to-text provider request failed.\"" in voice
     assert "logger" not in voice.lower()
     assert "print(" not in voice
@@ -67,6 +68,7 @@ def test_voice_recording_handles_microphone_edge_cases() -> None:
     assert "catch (Exception)" in ui
     assert "Microphone.IsRecording(null)" in ui
     assert "voiceClip.samples" in ui
+    assert "Destroy(voiceClip)" in ui
     assert "Coroutine voiceTimeoutCoroutine" in ui
     assert "StartCoroutine(CoWatchVoiceRecordingTimeout())" in ui
     assert "StopCoroutine(voiceTimeoutCoroutine)" in ui

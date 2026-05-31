@@ -61,15 +61,14 @@ class HttpSttClient:
                 response = self.client.post(self.url, headers=headers, data=data, files=files)
                 response.raise_for_status()
                 payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("Invalid response format from provider.")
+                transcript = str(payload.get("text", ""))
         except httpx.TimeoutException as exc:
             raise VoiceError("timeout", "Speech-to-text provider request timed out.", 504) from exc
         except Exception as exc:
             raise VoiceError("provider_error", "Speech-to-text provider request failed.", 502) from exc
 
-        if not isinstance(payload, dict):
-            raise VoiceError("provider_error", "Speech-to-text provider returned an invalid response format.", 502)
-
-        transcript = str(payload.get("text", ""))
         return _safe_transcript(transcript)
 
 

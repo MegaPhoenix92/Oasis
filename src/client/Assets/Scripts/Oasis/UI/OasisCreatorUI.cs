@@ -328,6 +328,8 @@ namespace Oasis.UI
             }
 
             byte[] wavBytes = EncodeWav(voiceClip, samplePosition);
+            Destroy(voiceClip);
+            voiceClip = null;
             SetState(OasisCreatorState.Generating);
             facade.backendBaseUrl = backendBaseUrl;
             facade.StartVoiceAudioFlow(
