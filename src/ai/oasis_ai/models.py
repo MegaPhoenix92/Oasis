@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -37,3 +39,34 @@ class PromptRequest(BaseModel):
 class ErrorResponse(BaseModel):
     error_code: str
     message: str
+
+
+class AssetManifest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_id: str
+    source_prompt: str
+    normalized_prompt: str
+    spec: Spec
+    provider: Literal["meshy.ai"]
+    job_id: str
+    source_url: str
+    fetch_path: str
+    local_path: str
+    checksum_sha256: str
+    format: Literal["glb"]
+    file_size_bytes: int
+    triangle_count: int
+    texture_count: int
+    created_at: str
+
+
+class GenerateResponse(BaseModel):
+    job_id: str
+    status: Literal["pending"]
+
+
+class JobResponse(BaseModel):
+    status: Literal["pending", "processing", "ready", "failed"]
+    manifest: AssetManifest | None = None
+    error_code: str | None = None
