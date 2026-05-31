@@ -441,6 +441,9 @@ namespace Oasis.Scene
 
         private void SyncWorldTransformsFromScene()
         {
+            if (timeOfDayController != null)
+                timeOfDayController.FlushToWorldDocument();
+
             if (activeWorld == null || activeWorld.objects == null)
                 return;
 

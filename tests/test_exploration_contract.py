@@ -74,6 +74,9 @@ def test_post_normalization_colliders_and_gravity_are_attached_after_placement_m
     assert "body.isKinematic = false" in physics
     assert "sourceBounds" not in physics
 
+    enable_method = _method_slice(physics, "public static void EnablePlacedPhysics", "private static BoxCollider EnsureBoundsCollider")
+    assert "ConfigurePostImport" not in enable_method
+
 
 def test_scene_bootstrap_enables_placed_physics_without_schema_changes() -> None:
     bootstrap = _read(SCENE_DIR / "OasisSceneBootstrap.cs")
@@ -98,7 +101,10 @@ def test_time_of_day_uses_scene_settings_only_and_preserves_unknown_keys() -> No
     assert "scene_settings_json" in document
     assert "time_of_day" not in document
     assert "OasisSceneSettings.SetTimeOfDay(worldDocument" in controller
+    assert "currentTimeOfDay = OasisSceneSettings.GetTimeOfDay(worldDocument)" in controller
+    assert "FlushToWorldDocument()" in controller
     assert "timeOfDayController.Initialize(activeWorld, directionalSun)" in bootstrap
+    assert "timeOfDayController.FlushToWorldDocument()" in bootstrap
     assert "scene_settings_json = \"{ \\\"time_of_day\\\": 0.5 }\"" in bootstrap
 
     assert "OasisWorldObject" not in settings

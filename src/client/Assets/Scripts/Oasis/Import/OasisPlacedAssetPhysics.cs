@@ -31,7 +31,6 @@ namespace Oasis.Import
             if (placedRoot == null)
                 return;
 
-            ConfigurePostImport(placedRoot);
             Rigidbody body = placedRoot.GetComponent<Rigidbody>();
             if (body == null)
                 return;

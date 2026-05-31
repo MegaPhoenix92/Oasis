@@ -11,16 +11,18 @@ namespace Oasis.Scene
         [SerializeField] private float keyboardStep = 0.04f;
 
         private OasisWorldDocument worldDocument;
+        private float currentTimeOfDay = 0.5f;
 
-        public float CurrentTimeOfDay => OasisSceneSettings.GetTimeOfDay(worldDocument);
+        public float CurrentTimeOfDay => currentTimeOfDay;
         public bool IsAnimating => animateTime;
 
         public void Initialize(OasisWorldDocument document, Light directionalSun)
         {
             worldDocument = document;
+            currentTimeOfDay = OasisSceneSettings.GetTimeOfDay(worldDocument);
             if (directionalSun != null)
                 sun = directionalSun;
-            ApplyLighting(CurrentTimeOfDay);
+            ApplyLighting(currentTimeOfDay);
         }
 
         private void Update()
@@ -48,13 +50,18 @@ namespace Oasis.Scene
                 return;
 
             float clamped = Mathf.Clamp01(normalizedTime);
-            OasisSceneSettings.SetTimeOfDay(worldDocument, clamped);
+            currentTimeOfDay = clamped;
             ApplyLighting(clamped);
         }
 
         public void SetAnimationEnabled(bool enabled)
         {
             animateTime = enabled;
+        }
+
+        public void FlushToWorldDocument()
+        {
+            OasisSceneSettings.SetTimeOfDay(worldDocument, currentTimeOfDay);
         }
 
         private void ApplyLighting(float timeOfDay)
