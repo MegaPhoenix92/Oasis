@@ -161,6 +161,16 @@ def test_refine_rejects_bad_directive_and_sanitizes_model_parse_errors(tmp_path:
         "message": "Claude response did not match the RefineResult schema.",
     }
 
+    array_response = client_with(FakeClaudeClient([json.dumps([{"kind": "transform"}])]), tmp_path).post(
+        "/refine",
+        json={"prior_spec": spec_payload(), "directive": "add windows"},
+    )
+    assert array_response.status_code == 502
+    assert array_response.json() == {
+        "error_code": "model_parse_error",
+        "message": "Claude response did not match the RefineResult schema.",
+    }
+
 
 def test_refine_rejects_unsafe_transform_shape_and_sanitizes_error(tmp_path: Path) -> None:
     tiny_scale = json.dumps(
