@@ -15,6 +15,8 @@ namespace Oasis.Scene
         private OasisPlacementAnchor placementAnchor;
         private OasisGlbImporter glbImporter;
         private OasisWorldPersistence worldPersistence;
+        private OasisTimeOfDayController timeOfDayController;
+        private Light directionalSun;
         private OasisCreatorUI creatorUI;
         private GameObject activeImportedObject;
         private OasisGenerationFacade.GeneratedOasisAsset activeAsset;
@@ -35,8 +37,6 @@ namespace Oasis.Scene
 
             CreateGround();
             GameObject marker = CreatePlacementMarker();
-            GameObject target = new GameObject("Camera Target");
-            target.transform.position = new Vector3(0f, 1f, 0f);
 
             placementAnchor = gameObject.AddComponent<OasisPlacementAnchor>();
             placementAnchor.Initialize(marker.transform);
@@ -51,8 +51,10 @@ namespace Oasis.Scene
             creatorUI.OnRedoRequested += HandleRedoRequested;
             activeWorld = CreateNewWorldDocument("Untitled World");
             UpdateUndoRedoUI();
-            CreateLighting();
-            CreateCamera(target.transform);
+            directionalSun = CreateLighting();
+            timeOfDayController = gameObject.AddComponent<OasisTimeOfDayController>();
+            timeOfDayController.Initialize(activeWorld, directionalSun);
+            CreateCamera();
 
             Debug.Log("Oasis scene foundation ready: ground, grid, lighting, camera, and GLB importer initialized.");
         }
@@ -165,6 +167,7 @@ namespace Oasis.Scene
                 {
                     ApplyTransform(obj.transform, snapshot.transform);
                     obj.name = "OasisObject_" + snapshot.instance_id;
+                    OasisPlacedAssetPhysics.EnablePlacedPhysics(obj);
                     
                     OasisWorldObjectBehaviour behaviour = obj.AddComponent<OasisWorldObjectBehaviour>();
                     behaviour.instanceId = snapshot.instance_id;
@@ -333,12 +336,7 @@ namespace Oasis.Scene
                 instance_id = instanceId,
                 asset_id = assetId,
                 created_at = NowIso(),
-                transform = new OasisWorldTransform
-                {
-                    position = new OasisWorldVector3 { x = placedTransform.position.x, y = placedTransform.position.y, z = placedTransform.position.z },
-                    rotation = new OasisWorldQuaternion { x = placedTransform.rotation.x, y = placedTransform.rotation.y, z = placedTransform.rotation.z, w = placedTransform.rotation.w },
-                    scale = new OasisWorldVector3 { x = placedTransform.localScale.x, y = placedTransform.localScale.y, z = placedTransform.localScale.z }
-                }
+                transform = CreateWorldTransform(placedTransform)
             };
         }
 
@@ -363,6 +361,7 @@ namespace Oasis.Scene
 
             placedWorldObjects.Add(activeImportedObject);
             gameObjectByInstanceId[instanceId] = activeImportedObject;
+            OasisPlacedAssetPhysics.EnablePlacedPhysics(activeImportedObject);
 
             OasisCreatorOperation op = new OasisCreatorOperation
             {
@@ -381,6 +380,7 @@ namespace Oasis.Scene
 
         public Task<OasisWorldPersistenceFailure> SaveActiveWorldAsync(CancellationToken cancellationToken = default)
         {
+            SyncWorldTransformsFromScene();
             activeWorld.updated_at = NowIso();
             return worldPersistence.SaveAsync(
                 activeWorld,
@@ -426,14 +426,37 @@ namespace Oasis.Scene
                         OasisWorldObjectBehaviour behaviour = obj.AddComponent<OasisWorldObjectBehaviour>();
                         behaviour.instanceId = instanceId;
                         behaviour.assetId = assetId;
+                        OasisPlacedAssetPhysics.EnablePlacedPhysics(obj);
 
                         placedWorldObjects.Add(obj);
                         gameObjectByInstanceId[instanceId] = obj;
                     }
                 }
+                if (timeOfDayController != null)
+                    timeOfDayController.Initialize(activeWorld, directionalSun);
                 UpdateUndoRedoUI();
             }
             return result;
+        }
+
+        private void SyncWorldTransformsFromScene()
+        {
+            if (timeOfDayController != null)
+                timeOfDayController.FlushToWorldDocument();
+
+            if (activeWorld == null || activeWorld.objects == null)
+                return;
+
+            foreach (OasisWorldObject worldObject in activeWorld.objects)
+            {
+                if (worldObject == null || string.IsNullOrWhiteSpace(worldObject.instance_id))
+                    continue;
+
+                if (!gameObjectByInstanceId.TryGetValue(worldObject.instance_id, out GameObject obj) || obj == null)
+                    continue;
+
+                worldObject.transform = CreateWorldTransform(obj.transform);
+            }
         }
 
         private void DestroyActiveSceneObjects()
@@ -529,7 +552,7 @@ namespace Oasis.Scene
             return marker;
         }
 
-        private static void CreateLighting()
+        private static Light CreateLighting()
         {
             GameObject lightObject = new GameObject("Directional Key Light");
             Light light = lightObject.AddComponent<Light>();
@@ -537,11 +560,21 @@ namespace Oasis.Scene
             light.intensity = 1.15f;
             light.shadows = LightShadows.Soft;
             lightObject.transform.rotation = Quaternion.Euler(50f, -35f, 0f);
+            return light;
         }
 
-        private static void CreateCamera(Transform target)
+        private static void CreateCamera()
         {
+            GameObject explorer = new GameObject("Oasis First Person Explorer");
+            explorer.transform.position = new Vector3(0f, 0.08f, -5f);
+            CharacterController controller = explorer.AddComponent<CharacterController>();
+            controller.height = 1.8f;
+            controller.radius = 0.32f;
+            controller.center = new Vector3(0f, 0.9f, 0f);
+
             GameObject cameraObject = new GameObject("Oasis Camera");
+            cameraObject.transform.SetParent(explorer.transform, false);
+            cameraObject.transform.localPosition = new Vector3(0f, 1.62f, 0f);
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.clearFlags = CameraClearFlags.Skybox;
             camera.fieldOfView = 55f;
@@ -549,10 +582,18 @@ namespace Oasis.Scene
             camera.farClipPlane = 500f;
             cameraObject.tag = "MainCamera";
 
-            OasisCameraRig rig = cameraObject.AddComponent<OasisCameraRig>();
-            rig.Initialize(target);
-            cameraObject.transform.position = new Vector3(5f, 4f, -6f);
-            cameraObject.transform.LookAt(target);
+            OasisFirstPersonController firstPerson = explorer.AddComponent<OasisFirstPersonController>();
+            firstPerson.Initialize(cameraObject.transform);
+        }
+
+        private static OasisWorldTransform CreateWorldTransform(Transform placedTransform)
+        {
+            return new OasisWorldTransform
+            {
+                position = new OasisWorldVector3 { x = placedTransform.position.x, y = placedTransform.position.y, z = placedTransform.position.z },
+                rotation = new OasisWorldQuaternion { x = placedTransform.rotation.x, y = placedTransform.rotation.y, z = placedTransform.rotation.z, w = placedTransform.rotation.w },
+                scale = new OasisWorldVector3 { x = placedTransform.localScale.x, y = placedTransform.localScale.y, z = placedTransform.localScale.z }
+            };
         }
     }
 }

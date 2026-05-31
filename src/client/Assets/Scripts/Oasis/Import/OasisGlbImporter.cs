@@ -75,6 +75,8 @@ namespace Oasis.Import
                 return null;
             }
 
+            OasisPlacedAssetPhysics.ConfigurePostImport(importedRoot);
+
             Debug.Log($"Oasis asset imported: asset_id={manifest.asset_id}, triangles={manifest.triangle_count}, textures={manifest.texture_count}");
             return importedRoot;
         }
