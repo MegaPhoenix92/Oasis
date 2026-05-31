@@ -524,24 +524,101 @@ namespace Oasis.Persistence
         private static bool TryExtractTopLevelObject(string json, string propertyName, out string rawObject)
         {
             rawObject = null;
-            string quotedName = "\"" + propertyName + "\"";
-            int propertyIndex = json.IndexOf(quotedName, StringComparison.Ordinal);
-            if (propertyIndex < 0)
+            if (string.IsNullOrWhiteSpace(json) || string.IsNullOrEmpty(propertyName))
                 return false;
 
-            int colonIndex = json.IndexOf(':', propertyIndex + quotedName.Length);
-            if (colonIndex < 0)
-                return false;
-
-            int objectStart = colonIndex + 1;
-            while (objectStart < json.Length && char.IsWhiteSpace(json[objectStart]))
-                objectStart++;
-            if (objectStart >= json.Length || json[objectStart] != '{')
-                return false;
-
+            int objectStart = -1;
+            int depth = 0;
             bool inString = false;
             bool escaped = false;
-            int depth = 0;
+            for (int index = 0; index < json.Length; index++)
+            {
+                char current = json[index];
+                if (inString)
+                {
+                    if (escaped)
+                    {
+                        escaped = false;
+                    }
+                    else if (current == '\\')
+                    {
+                        escaped = true;
+                    }
+                    else if (current == '"')
+                    {
+                        inString = false;
+                    }
+                    continue;
+                }
+
+                if (current == '{')
+                {
+                    depth++;
+                    continue;
+                }
+                if (current == '}')
+                {
+                    depth--;
+                    continue;
+                }
+                if (current != '"')
+                    continue;
+
+                if (depth != 1)
+                {
+                    inString = true;
+                    continue;
+                }
+
+                int keyStart = index + 1;
+                StringBuilder keyBuilder = new StringBuilder();
+                bool keyEscaped = false;
+                index = keyStart;
+                for (; index < json.Length; index++)
+                {
+                    char keyChar = json[index];
+                    if (keyEscaped)
+                    {
+                        keyBuilder.Append(keyChar);
+                        keyEscaped = false;
+                    }
+                    else if (keyChar == '\\')
+                    {
+                        keyEscaped = true;
+                    }
+                    else if (keyChar == '"')
+                    {
+                        break;
+                    }
+                    else
+                    {
+                        keyBuilder.Append(keyChar);
+                    }
+                }
+                if (index >= json.Length)
+                    return false;
+                if (!string.Equals(keyBuilder.ToString(), propertyName, StringComparison.Ordinal))
+                    continue;
+
+                int colonIndex = index + 1;
+                while (colonIndex < json.Length && char.IsWhiteSpace(json[colonIndex]))
+                    colonIndex++;
+                if (colonIndex >= json.Length || json[colonIndex] != ':')
+                    return false;
+
+                objectStart = colonIndex + 1;
+                while (objectStart < json.Length && char.IsWhiteSpace(json[objectStart]))
+                    objectStart++;
+                if (objectStart >= json.Length || json[objectStart] != '{')
+                    return false;
+                break;
+            }
+            if (objectStart < 0)
+                return false;
+
+            inString = false;
+            escaped = false;
+            depth = 0;
             for (int index = objectStart; index < json.Length; index++)
             {
                 char current = json[index];

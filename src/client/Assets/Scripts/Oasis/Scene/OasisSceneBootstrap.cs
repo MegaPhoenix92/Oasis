@@ -20,6 +20,7 @@ namespace Oasis.Scene
         private OasisGenerationFacade.GeneratedOasisAsset activeAsset;
         private OasisWorldDocument activeWorld;
         private readonly Dictionary<string, string> manifestJsonByAssetId = new Dictionary<string, string>();
+        private readonly List<GameObject> placedWorldObjects = new List<GameObject>();
 
         private void Awake()
         {
@@ -72,9 +73,12 @@ namespace Oasis.Scene
 
             MoveObjectToAnchor(activeImportedObject, placementAnchor.LastGroundPoint);
             AddPlacedObjectToWorld(activeImportedObject.transform, activeAsset.Manifest.asset_id);
+            placedWorldObjects.Add(activeImportedObject);
             if (creatorUI != null)
                 creatorUI.RecordObjectPlaced(activeAsset.Manifest.asset_id);
             Debug.Log($"Oasis asset placed in scene: asset_id={activeAsset.Manifest.asset_id}, point={placementAnchor.LastGroundPoint}");
+            activeImportedObject = null;
+            activeAsset = null;
         }
 
         public Task<OasisWorldPersistenceFailure> SaveActiveWorldAsync(CancellationToken cancellationToken = default)
@@ -89,6 +93,7 @@ namespace Oasis.Scene
 
         public async Task<OasisWorldLoadResult> LoadWorldAsync(string worldId, CancellationToken cancellationToken = default)
         {
+            DestroyActiveSceneObjects();
             OasisWorldLoadResult result = await worldPersistence.LoadAsync(worldId, glbImporter, cancellationToken);
             if (result.Success && result.Document != null)
             {
@@ -96,8 +101,26 @@ namespace Oasis.Scene
                 manifestJsonByAssetId.Clear();
                 foreach (KeyValuePair<string, string> entry in result.ManifestJsonByAssetId)
                     manifestJsonByAssetId[entry.Key] = entry.Value;
+                placedWorldObjects.AddRange(result.ImportedObjects);
             }
             return result;
+        }
+
+        private void DestroyActiveSceneObjects()
+        {
+            if (activeImportedObject != null)
+            {
+                Destroy(activeImportedObject);
+                activeImportedObject = null;
+                activeAsset = null;
+            }
+
+            foreach (GameObject placedObject in placedWorldObjects)
+            {
+                if (placedObject != null)
+                    Destroy(placedObject);
+            }
+            placedWorldObjects.Clear();
         }
 
         private void AddPlacedObjectToWorld(Transform placedTransform, string assetId)

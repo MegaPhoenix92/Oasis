@@ -227,3 +227,13 @@ def test_unity_persistence_contract_is_client_local_and_fetch_path_only() -> Non
     assert "Directory.Move(tempDirectory, worldDirectory)" in persistence
     assert "SaveActiveWorldAsync" in scene
     assert "LoadWorldAsync" in scene
+    assert "placedWorldObjects" in scene
+    assert "DestroyActiveSceneObjects" in scene
+
+
+def test_scene_settings_extraction_ignores_string_value_collisions() -> None:
+    persistence = (PERSISTENCE_DIR / "OasisWorldPersistence.cs").read_text(encoding="utf-8")
+
+    assert "json.IndexOf" not in persistence
+    assert "depth != 1" in persistence
+    assert "keyBuilder.ToString()" in persistence
