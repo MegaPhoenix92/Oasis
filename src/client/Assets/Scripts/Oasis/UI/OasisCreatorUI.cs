@@ -32,7 +32,7 @@ namespace Oasis.UI
         public string backendBaseUrl = "http://localhost:8000";
 
         // Integration Seams for #9
-        public event Action<OasisAssetManifest> OnGenerationReady;
+        public event Action<OasisGenerationFacade.GeneratedOasisAsset> OnGenerationReady;
         public event Action OnPlaceRequested;
         public event Action<string> OnFlowFailed;
 
@@ -162,6 +162,18 @@ namespace Oasis.UI
         private void HandlePlaceRequested()
         {
             OnPlaceRequested?.Invoke();
+        }
+
+        public void RecordAssetImported(string assetId)
+        {
+            if (facade != null)
+                facade.RecordAssetImported(assetId);
+        }
+
+        public void RecordObjectPlaced(string assetId)
+        {
+            if (facade != null)
+                facade.RecordObjectPlaced(assetId);
         }
 
         public string GetSafeErrorMessage(string errorCode)

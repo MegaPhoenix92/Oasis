@@ -10,11 +10,26 @@ from oasis_ai.app import create_app
 from oasis_ai.generation import GenerationService
 from oasis_ai.models import Spec
 from oasis_ai.service import SpecService
+from oasis_ai.telemetry import LocalTelemetry
 
 
 class UnusedClaudeClient:
     def complete(self, prompt: str, normalized_prompt: str) -> str:
         raise AssertionError("Claude should not be called by Meshy generation tests")
+
+
+class FakeClaudeClient:
+    def complete(self, prompt: str, normalized_prompt: str) -> str:
+        assert prompt == "a wooden treasure chest"
+        assert normalized_prompt == "a wooden treasure chest"
+        return (
+            '{"schema_version":"1.0","source_prompt":"a wooden treasure chest",'
+            '"normalized_prompt":"a wooden treasure chest","object_type":"prop",'
+            '"name":"wooden treasure chest","materials":["wood","metal"],'
+            '"style":"medieval","dimensions":{"width":1.0,"height":0.7,"depth":0.6},'
+            '"details":["hinged lid","metal bands"],'
+            '"meshy_prompt":"a medieval wooden treasure chest with metal bands"}'
+        )
 
 
 class FakeMeshyClient:
@@ -54,9 +69,11 @@ def spec_payload() -> dict[str, Any]:
 
 
 def client_with(fake_meshy: FakeMeshyClient, cache_dir: Path, max_generation_calls: int = 5) -> TestClient:
+    telemetry = LocalTelemetry(cache_dir / "telemetry.jsonl", enabled=False)
     app = create_app(
         SpecService(UnusedClaudeClient()),
-        GenerationService(fake_meshy, cache_dir=cache_dir, max_generation_calls=max_generation_calls),
+        GenerationService(fake_meshy, cache_dir=cache_dir, max_generation_calls=max_generation_calls, telemetry=telemetry),
+        telemetry=telemetry,
     )
     return TestClient(app)
 
@@ -72,6 +89,31 @@ def test_generate_returns_immediate_pending_job(tmp_path: Path) -> None:
     assert response.json()["job_id"]
     assert len(fake_meshy.created_payloads) == 1
     assert fake_meshy.statuses == [{"status": "PENDING"}]
+
+
+def test_create_chains_spec_to_generation_and_returns_immediate_pending_job(tmp_path: Path) -> None:
+    fake_meshy = FakeMeshyClient([{"status": "PENDING"}])
+    telemetry = LocalTelemetry(tmp_path / "telemetry.jsonl")
+    app = create_app(
+        SpecService(FakeClaudeClient()),
+        GenerationService(fake_meshy, cache_dir=tmp_path, telemetry=telemetry),
+        telemetry=telemetry,
+    )
+    client = TestClient(app)
+
+    response = client.post("/create", json={"prompt": "a wooden treasure chest"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "pending"
+    assert response.json()["job_id"]
+    assert len(fake_meshy.created_payloads) == 1
+    assert fake_meshy.created_payloads[0].meshy_prompt == "a medieval wooden treasure chest with metal bands"
+    assert fake_meshy.statuses == [{"status": "PENDING"}]
+    events = [line for line in (tmp_path / "telemetry.jsonl").read_text(encoding="utf-8").splitlines() if line]
+    assert len(events) == 3
+    assert '"event":"prompt_submitted"' in events[0]
+    assert '"event":"prompt_structured"' in events[1]
+    assert '"event":"generation_submitted"' in events[2]
 
 
 def test_polling_ready_downloads_cache_and_returns_locked_manifest(tmp_path: Path) -> None:

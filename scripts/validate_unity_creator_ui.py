@@ -79,6 +79,12 @@ def main() -> None:
     # 5. fetch_path handoff verification
     if "public string fetch_path" not in manifest:
         fail("OasisAssetManifest is missing the fetch_path field necessary for handoff")
+    if 'NormalizeBaseUrl() + "/create"' not in facade:
+        fail("OasisGenerationFacade must submit prompts through POST /create")
+    if "manifest.fetch_path" not in facade or "UnityWebRequest.Get(assetUrl)" not in facade:
+        fail("OasisGenerationFacade must download generated assets through manifest.fetch_path")
+    if "ImportFromBytesAsync" not in read("src/client/Assets/Scripts/Oasis/Scene/OasisSceneBootstrap.cs"):
+        fail("OasisSceneBootstrap must hand downloaded bytes and manifest JSON to OasisGlbImporter")
 
     # 6. Enter submits when idle/error and prompt is non-empty
     if "KeyCode.Return" not in ui and "KeyCode.KeypadEnter" not in ui:

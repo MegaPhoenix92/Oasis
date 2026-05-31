@@ -14,6 +14,7 @@ from typing import Any, Literal, Protocol
 import httpx
 
 from .models import AssetManifest, Spec
+from .telemetry import LocalTelemetry, elapsed_ms, new_prompt_id, new_session_id
 
 MESHY_BASE_URL = "https://api.meshy.ai/openapi/v2"
 DEFAULT_TARGET_POLYCOUNT = 100_000
@@ -104,8 +105,12 @@ class GenerationJob:
     provider_job_id: str | None
     spec: Spec
     status: JobStatus
+    session_id: str
+    prompt_id: str
+    started_at: float
     manifest: AssetManifest | None = None
     error_code: str | None = None
+    generation_ready_emitted: bool = False
 
 
 class GenerationService:
@@ -114,28 +119,60 @@ class GenerationService:
         client: MeshyClient,
         cache_dir: Path | None = None,
         max_generation_calls: int | None = None,
+        telemetry: LocalTelemetry | None = None,
     ) -> None:
         self.client = client
         self.cache_dir = cache_dir or _repo_root() / "assets" / "generated"
         self.max_generation_calls = max_generation_calls if max_generation_calls is not None else _max_generation_calls_from_env()
+        self.telemetry = telemetry or LocalTelemetry()
         self._generation_calls = 0
         self._jobs: dict[str, GenerationJob] = {}
         self._manifests_by_asset_id: dict[str, AssetManifest] = {}
 
-    def submit(self, spec: Spec) -> GenerationJob:
+    def submit(
+        self,
+        spec: Spec,
+        *,
+        session_id: str | None = None,
+        prompt_id: str | None = None,
+        started_at: float | None = None,
+    ) -> GenerationJob:
         if self._generation_calls >= self.max_generation_calls:
             raise GenerationError("spend_guard_exceeded", "Meshy generation call limit was reached.", 429)
 
         self._generation_calls += 1
         job_id = str(uuid.uuid4())
-        job = GenerationJob(job_id=job_id, provider_job_id=None, spec=spec, status="pending")
+        job = GenerationJob(
+            job_id=job_id,
+            provider_job_id=None,
+            spec=spec,
+            status="pending",
+            session_id=session_id or new_session_id(),
+            prompt_id=prompt_id or new_prompt_id(),
+            started_at=started_at if started_at is not None else time.monotonic(),
+        )
         self._jobs[job_id] = job
 
         try:
             job.provider_job_id = self.client.create_preview_task(spec)
+            self.telemetry.emit(
+                "generation_submitted",
+                session_id=job.session_id,
+                prompt_id=job.prompt_id,
+                provider="meshy.ai",
+                elapsed_ms=elapsed_ms(job.started_at),
+            )
         except GenerationError as exc:
             job.status = "failed"
             job.error_code = exc.error_code
+            self.telemetry.emit(
+                "flow_failed",
+                session_id=job.session_id,
+                prompt_id=job.prompt_id,
+                provider="meshy.ai",
+                elapsed_ms=elapsed_ms(job.started_at),
+                error_code=exc.error_code,
+            )
             raise
 
         return job
@@ -155,6 +192,14 @@ class GenerationService:
         except GenerationError as exc:
             job.status = "failed"
             job.error_code = exc.error_code
+            self.telemetry.emit(
+                "flow_failed",
+                session_id=job.session_id,
+                prompt_id=job.prompt_id,
+                provider="meshy.ai",
+                elapsed_ms=elapsed_ms(job.started_at),
+                error_code=exc.error_code,
+            )
         return job
 
     def asset_path(self, asset_id: str) -> Path:
@@ -202,6 +247,16 @@ class GenerationService:
         job.manifest = manifest
         job.error_code = None
         self._manifests_by_asset_id[manifest.asset_id] = manifest
+        if not job.generation_ready_emitted:
+            self.telemetry.emit(
+                "generation_ready",
+                session_id=job.session_id,
+                prompt_id=job.prompt_id,
+                provider="meshy.ai",
+                elapsed_ms=elapsed_ms(job.started_at),
+                asset_id=manifest.asset_id,
+            )
+            job.generation_ready_emitted = True
 
     def _cache_asset(self, job: GenerationJob, source_url: str, glb_bytes: bytes, task: dict[str, Any]) -> AssetManifest:
         asset_id = str(uuid.uuid4())

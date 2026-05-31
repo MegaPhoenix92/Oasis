@@ -85,4 +85,11 @@ def test_no_secrets_and_no_source_url_fetches_in_ui() -> None:
 
 def test_fetch_path_handoff_present() -> None:
     manifest_content = (IMPORT_DIR / "OasisAssetManifest.cs").read_text(encoding="utf-8")
+    facade_content = (UI_DIR / "OasisGenerationFacade.cs").read_text(encoding="utf-8")
+    scene_content = (CLIENT / "Assets/Scripts/Oasis/Scene/OasisSceneBootstrap.cs").read_text(encoding="utf-8")
+
     assert "public string fetch_path" in manifest_content, "OasisAssetManifest must have fetch_path field"
+    assert 'NormalizeBaseUrl() + "/create"' in facade_content
+    assert "manifest.fetch_path" in facade_content
+    assert "UnityWebRequest.Get(assetUrl)" in facade_content
+    assert "ImportFromBytesAsync(asset.GlbBytes, asset.ManifestJson" in scene_content
