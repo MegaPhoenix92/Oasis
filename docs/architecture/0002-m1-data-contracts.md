@@ -27,6 +27,7 @@ Unity client. API keys live **server-side only**.
 | Location | `src/ai/` (the AI integration service) |
 | Language / runtime | Python 3.11 (matches CI + `scripts/validate_scaffold.py`) |
 | Framework / tooling | FastAPI + `uv`; `anthropic` SDK for Claude; `httpx` for Meshy REST |
+| Claude model | Sonnet tier (e.g. `claude-sonnet-4-6`) or Haiku for the < 5s budget — **NOT Opus** |
 | Client → service | Unity client (#8) calls the service over HTTP (localhost in PoC) |
 | Secrets | `ANTHROPIC_API_KEY`, `MESHY_API_KEY` read from env (`.env.example` names). **Never** shipped in the client, committed, or logged. |
 
@@ -41,9 +42,32 @@ persistence — is a Phase-2 concern; for M1 the only backend is this `src/ai` s
 | Method / path | Issue | Input | Output |
 |---------------|-------|-------|--------|
 | `POST /spec` | #5 | `{ "prompt": "<text>" }` | `Spec` (§2) |
-| `POST /generate` | #6 | `Spec` (§2) | `AssetManifest` (§4) + a way to fetch the glTF |
-| `POST /create` | #9 | `{ "prompt": "<text>" }` | chains /spec → /generate; returns `AssetManifest` + glTF URL |
+| `POST /generate` | #6 | `Spec` (§2) | `{ "job_id": "...", "status": "pending" }` — **async**, does not block on Meshy |
+| `GET /jobs/{job_id}` | #6 | `job_id` | `{ "status": "pending\|processing\|ready\|failed", "manifest"?, "error_code"? }` |
+| `GET /assets/{asset_id}` | #6/#7 | `asset_id` | the cached glTF binary — **the client's only fetch path** |
+| `POST /create` | #9 | `{ "prompt": "<text>" }` | convenience: submits the chained flow, returns `{ job_id, status }`; client polls `/jobs/{id}` |
 | `GET /healthz` | — | — | liveness for CI/local checks |
+
+**Async model (LOCKED):** `/generate` and `/create` submit the Meshy job and return a
+`job_id` **immediately** — they do **not** hold the HTTP socket open across Meshy's ~60s
+generation (so no long client/server timeout config is needed, and #8's "Generating"
+state has something to poll). The client polls `GET /jobs/{job_id}` (~2s interval) until
+`ready` (with `manifest`) or `failed` (with `error_code`), giving up at the §5 budget
+(> 90s total → `timeout`).
+
+### Asset delivery — how the glTF binary reaches the client (LOCKED)
+
+The binary path is part of the contract, not a builder choice:
+
+1. `/generate` (#6) downloads the glTF from Meshy **server-side**, writes it to a local
+   cache (`assets/generated/{asset_id}.glb`), computes the checksum, and records both the
+   cache path and the canonical fetch endpoint in the manifest.
+2. The Unity client (#8/#9) fetches the binary **only** via `GET /assets/{asset_id}` —
+   **never** from `source_url`, and **never** by reading a server filesystem path.
+   `local_path` (§4) is backend-internal bookkeeping, not a client contract.
+3. **Ruled out:** the client fetching Meshy's `source_url`. Those URLs are
+   time-limited/signed, so a saved world (#19) would reload to dead links, and it would
+   risk leaking the Meshy key to the client. `source_url` is **provenance only**.
 
 ---
 
@@ -55,6 +79,8 @@ Extends the schema in issue #5 with a `schema_version` and an explicit `meshy_pr
 ```json
 {
   "schema_version": "1.0",
+  "source_prompt": "a wooden chair",
+  "normalized_prompt": "wooden chair",
   "object_type": "furniture",
   "name": "wooden chair",
   "materials": ["wood", "fabric"],
@@ -67,6 +93,9 @@ Extends the schema in issue #5 with a `schema_version` and an explicit `meshy_pr
 
 Rules:
 - `schema_version` is required; bump it (and this doc) on any breaking field change.
+- `source_prompt` = the raw user input verbatim; `normalized_prompt` = lowercased,
+  trimmed, whitespace-collapsed. Both are carried in the Spec so #6 fills the matching
+  manifest fields (§4) **deterministically** — #6 does not re-derive them.
 - `dimensions` are meters. `materials`/`details` are free-form lists.
 - `meshy_prompt` is **the** field #6 consumes — #5 owns producing a clean one.
 - #5 must validate the model's JSON against this shape and repair-or-typed-error on
@@ -105,7 +134,9 @@ export (#20).
   "spec": { "...": "the §2 Spec that produced it" },
   "provider": "meshy.ai",
   "job_id": "<provider job id>",
-  "source_url": "<provider asset url>",
+  "source_url": "<provider asset url — PROVENANCE ONLY, may expire, never the client fetch path>",
+  "fetch_path": "/assets/<asset_id>",
+  "local_path": "assets/generated/<asset_id>.glb",
   "checksum_sha256": "<hex>",
   "format": "glb",
   "file_size_bytes": 123456,
@@ -115,9 +146,27 @@ export (#20).
 }
 ```
 
+- `fetch_path` (the `/assets/{id}` endpoint) is the **only** client-facing way to get the
+  binary. `local_path` is **backend-internal** (server cache bookkeeping), resolved
+  relative to the repo root — not a client contract. `source_url` is provenance only
+  (see §1 Asset delivery).
+- The cached binary + manifest (not `source_url`) are what persist for save/load (#19)
+  and export (#20); the server cache is ephemeral — see the persistence invariant in §7.
+
 Import rules (#7): reject unsupported formats, oversized files, or assets missing
 required manifest fields; a malformed/oversized asset must fail gracefully and **never
 crash the scene** (testable via the offline fixture, #74).
+
+### Import & placement semantics (#7/#9 — LOCKED so both import identically)
+
+- **Up-axis / handedness:** assets are glTF 2.0 (+Y up, right-handed); rely on glTFast's
+  standard glTF→Unity conversion — do **not** apply an extra axis flip.
+- **Scale:** normalize on import — uniformly scale the mesh so its bounding box matches
+  `spec.dimensions` (meters), preserving aspect ratio (fit, don't stretch).
+- **Pivot / origin:** ground the object — pivot at the bottom-center of the bounding box,
+  so it sits on the surface rather than half-buried.
+- **Placement anchor:** positioned at the user's click point on the ground plane (#7),
+  resting on it.
 
 ---
 
@@ -152,8 +201,13 @@ Typed errors, mapped to HTTP status:
 | `model_parse_error` | Claude output not schema-valid after repair | 502 |
 | `provider_error` | Meshy/Claude API failure | 502 |
 | `timeout` | stage exceeds its budget | 504 |
+| `asset_not_found` | unknown `asset_id` / `job_id` | 404 |
+| `asset_invalid` | importer rejects the asset (#7 validation) | 422 |
 
-Errors emit `flow_failed` with the `error_code`.
+Error responses carry **only** the typed `error_code` + a safe human message — never the
+raw Claude/Meshy exception text (it can leak keys/paths; see §7). Async failures surface
+as `status: "failed"` + `error_code` on `GET /jobs/{job_id}`. Errors emit `flow_failed`
+with the `error_code`.
 
 ---
 
@@ -163,8 +217,19 @@ Errors emit `flow_failed` with the `error_code`.
    in the client, never committed, never logged.
 2. No secret value appears in any committed file (`.env.example` carries names only).
 3. Meshy generation has a per-run spend guard.
-4. #5/#6 are **security-shape** PRs → merge gate is **≥ 2 NON-xAI lineages** APPROVE.
+4. `GET /assets/{asset_id}` validates `asset_id` against the UUID format / a known
+   manifest and serves **only** from the `assets/generated/` cache — it never interpolates
+   client input into a filesystem path (no path traversal / arbitrary file read).
+5. Error bodies and logs are sanitized: typed code + safe message only; never echo raw
+   provider exception strings.
+6. **Persistence (#19/#20):** the server cache is **ephemeral** — saved/exported worlds
+   must persist the asset binary + manifest themselves; regeneration from `source_url` is
+   not guaranteed (it may have expired).
+7. #5/#6 are **security-shape** PRs → merge gate is **≥ 2 NON-xAI lineages** APPROVE.
 
 ---
 
-*LOCKED for M1. Any change lands here first, then in the affected issues.*
+*LOCKED for M1. Any change lands here first, then in the affected issues. Cross-reviewed
+by agy (Google) + codex (OpenAI) on 2026-05-30; their CRITICAL/IMPORTANT findings —
+prompt-provenance, async job model, single client fetch path, import/placement semantics,
+asset-serving path safety — are incorporated.*
