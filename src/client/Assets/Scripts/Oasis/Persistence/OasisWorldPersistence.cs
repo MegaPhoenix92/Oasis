@@ -580,7 +580,10 @@ namespace Oasis.Persistence
             }
 
             byte[] glbBytes = await ReadAllBytesAsync(assetPath, cancellationToken);
-            if (!OasisAssetManifestValidator.ValidateAssetBytes(glbBytes, manifest, out _) || !ValidateChecksum(glbBytes, manifest, out OasisWorldPersistenceFailure failure))
+            OasisWorldPersistenceFailure failure = OasisWorldPersistenceFailure.None;
+            bool validAssetBytes = OasisAssetManifestValidator.ValidateAssetBytes(glbBytes, manifest, out _);
+            bool validChecksum = validAssetBytes && ValidateChecksum(glbBytes, manifest, out failure);
+            if (!validAssetBytes || !validChecksum)
             {
                 if (!failure.IsFailure)
                     failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.AssetInvalid, "Saved GLB is invalid.", worldObject.instance_id, worldObject.asset_id);

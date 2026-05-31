@@ -37,6 +37,9 @@ def test_world_load_manifest_and_glb_reads_are_backgrounded() -> None:
     assert "LoadAssetForObjectAsync" in persistence
     assert "await ReadAllTextAsync(manifestPath, cancellationToken)" in persistence
     assert "await ReadAllBytesAsync(assetPath, cancellationToken)" in persistence
+    assert "OasisWorldPersistenceFailure failure = OasisWorldPersistenceFailure.None;" in persistence
+    assert "bool validAssetBytes = OasisAssetManifestValidator.ValidateAssetBytes" in persistence
+    assert "bool validChecksum = validAssetBytes && ValidateChecksum" in persistence
     assert "Task<byte[]> ReadAllBytesAsync" in persistence
     assert "File.ReadAllText(manifestPath" not in persistence
     assert "File.ReadAllBytes(assetPath" not in persistence
