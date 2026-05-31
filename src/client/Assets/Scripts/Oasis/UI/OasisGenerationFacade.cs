@@ -129,6 +129,7 @@ namespace Oasis.UI
             {
                 if (Time.time - startTime > 90f)
                 {
+                    EmitTelemetry("flow_failed", errorCode: "timeout");
                     onFailure?.Invoke("timeout");
                     yield break;
                 }
