@@ -66,7 +66,6 @@ def test_post_normalization_colliders_and_kinematic_bodies_are_attached_after_pl
 
     assert "TryGetPostImportRendererBounds" in physics
     assert "GetComponentsInChildren<Renderer>()" in physics
-    assert "BoxCollider" in physics
     assert "Rigidbody" in physics
     assert "body.useGravity = false" in physics
     assert "body.isKinematic = true" in physics
@@ -75,6 +74,14 @@ def test_post_normalization_colliders_and_kinematic_bodies_are_attached_after_pl
     assert "RigidbodyConstraints.FreezeAll" in physics
     assert "body.WakeUp()" not in physics
     assert "sourceBounds" not in physics
+
+    configure_post_import = _method_slice(
+        physics,
+        "public static void ConfigurePostImport",
+        "public static void EnablePlacedPhysics",
+    )
+    assert "BoxCollider collider = EnsureBoundsCollider(importedRoot)" in configure_post_import
+    assert "collider.isTrigger = false" in configure_post_import
 
     enable_method = _method_slice(physics, "public static void EnablePlacedPhysics", "private static void ConfigureAuthoredTransformBody")
     assert "ConfigurePostImport" not in enable_method
