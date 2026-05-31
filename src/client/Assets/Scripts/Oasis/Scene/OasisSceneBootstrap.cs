@@ -1,4 +1,5 @@
 using Oasis.Import;
+using Oasis.UI;
 using UnityEngine;
 
 namespace Oasis.Scene
@@ -25,6 +26,7 @@ namespace Oasis.Scene
 
             gameObject.AddComponent<OasisGridOverlay>();
             gameObject.AddComponent<OasisGlbImporter>();
+            gameObject.AddComponent<OasisCreatorUI>();
             CreateLighting();
             CreateCamera(target.transform);
 
