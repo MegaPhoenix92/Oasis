@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from oasis_ai.app import create_app
-from oasis_ai.voice import VoiceService
+from oasis_ai.voice import MAX_AUDIO_BASE64_CHARS, VoiceService
 
 
 class FakeSttClient:
@@ -58,6 +58,17 @@ def test_voice_audio_is_transient_and_temp_file_deleted_after_stt() -> None:
     assert service.deleted_temp_paths[0].name.startswith("oasis_voice_")
 
 
+def test_voice_temp_tracking_is_bounded() -> None:
+    service = VoiceService(FakeSttClient())
+    audio_base64 = base64.b64encode(b"RIFFmock wav bytes").decode("ascii")
+
+    for index in range(105):
+        assert service.transcribe(audio_base64=audio_base64, content_type="audio/wav") == "make it taller"
+
+    assert len(service.deleted_temp_paths) == 100
+    assert all(not path.exists() for path in service.deleted_temp_paths)
+
+
 def test_voice_service_sweeps_stale_temp_files_on_startup(tmp_path: Path) -> None:
     stale = tmp_path / "oasis_voice_stale.wav"
     stale.write_bytes(b"orphaned audio")
@@ -83,6 +94,10 @@ def test_voice_rejects_empty_or_invalid_payload_with_sanitized_error() -> None:
     }
     assert invalid_audio.status_code == 422
     assert invalid_audio.json() == {"error_code": "asset_invalid", "message": "Voice audio payload was invalid."}
+
+    oversized = client.post("/voice/transcribe", json={"audio_base64": "A" * (MAX_AUDIO_BASE64_CHARS + 1)})
+    assert oversized.status_code == 422
+    assert oversized.json() == {"error_code": "asset_invalid", "message": "Voice audio payload was too large."}
 
 
 def test_stt_provider_key_is_server_side_only(monkeypatch) -> None:

@@ -274,13 +274,21 @@ namespace Oasis.UI
             }
 
             voiceClip = Microphone.Start(null, false, voiceMaxSeconds, voiceSampleRate);
+            if (voiceClip == null)
+            {
+                SetState(OasisCreatorState.Error, "invalid_prompt");
+                OnFlowFailed?.Invoke("invalid_prompt");
+                return;
+            }
+
             isVoiceRecording = true;
             UpdateUndoRedoButtonInteractivity();
         }
 
         private void FinishVoiceRecording()
         {
-            int samplePosition = Microphone.GetPosition(null);
+            bool wasRecording = Microphone.IsRecording(null);
+            int samplePosition = wasRecording ? Microphone.GetPosition(null) : (voiceClip != null ? voiceClip.samples : 0);
             Microphone.End(null);
             isVoiceRecording = false;
             UpdateUndoRedoButtonInteractivity();

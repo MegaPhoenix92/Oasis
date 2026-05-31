@@ -17,7 +17,9 @@ from .service import SpecError, normalize_prompt
 OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions"
 DEFAULT_STT_MODEL = "gpt-4o-mini-transcribe"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
+MAX_AUDIO_BASE64_CHARS = MAX_AUDIO_BYTES * 2
 STALE_TEMP_SECONDS = 60 * 60
+MAX_TRACKED_TEMP_PATHS = 100
 
 
 class VoiceError(SpecError):
@@ -93,6 +95,8 @@ class VoiceService:
                 try:
                     temp_path.unlink(missing_ok=True)
                     self.deleted_temp_paths.append(temp_path)
+                    if len(self.deleted_temp_paths) > MAX_TRACKED_TEMP_PATHS:
+                        self.deleted_temp_paths.pop(0)
                 except OSError:
                     pass
 
@@ -103,6 +107,8 @@ class VoiceService:
                 if path.is_file() and path.stat().st_mtime < cutoff:
                     path.unlink(missing_ok=True)
                     self.swept_temp_paths.append(path)
+                    if len(self.swept_temp_paths) > MAX_TRACKED_TEMP_PATHS:
+                        self.swept_temp_paths.pop(0)
             except OSError:
                 pass
 
@@ -113,6 +119,9 @@ def _safe_transcript(transcript: str) -> str:
 
 
 def _decode_audio(audio_base64: str) -> bytes:
+    if len(audio_base64) > MAX_AUDIO_BASE64_CHARS:
+        raise VoiceError("asset_invalid", "Voice audio payload was too large.", 422)
+
     try:
         audio = base64.b64decode(audio_base64, validate=True)
     except (binascii.Error, ValueError) as exc:

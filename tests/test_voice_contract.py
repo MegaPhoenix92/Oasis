@@ -56,6 +56,15 @@ def test_voice_client_uses_same_typed_router_after_transcription() -> None:
     assert "intent" not in ui.lower()
 
 
+def test_voice_recording_handles_microphone_edge_cases() -> None:
+    ui = (UI_DIR / "OasisCreatorUI.cs").read_text(encoding="utf-8")
+
+    assert "voiceClip = Microphone.Start" in ui
+    assert "if (voiceClip == null)" in ui
+    assert "Microphone.IsRecording(null)" in ui
+    assert "voiceClip.samples" in ui
+
+
 def test_stt_secret_names_are_not_in_unity_client() -> None:
     client_text = "\n".join(path.read_text(encoding="utf-8") for path in CLIENT.rglob("*.cs"))
 
