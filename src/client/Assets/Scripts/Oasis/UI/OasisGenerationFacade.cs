@@ -63,6 +63,20 @@ namespace Oasis.UI
     }
 
     [Serializable]
+    public class VoiceTranscriptRequest
+    {
+        public string transcript;
+        public string audio_base64;
+        public string content_type;
+    }
+
+    [Serializable]
+    public class VoiceTranscriptResponse
+    {
+        public string transcript;
+    }
+
+    [Serializable]
     public class JobResponse
     {
         public string status;
@@ -111,6 +125,29 @@ namespace Oasis.UI
         public void StartGenerationFromSpec(OasisSpec spec, Action<GeneratedOasisAsset> onSuccess, Action<string> onFailure)
         {
             StartCoroutine(CoGenerateFromSpecFlow(spec, onSuccess, onFailure));
+        }
+
+        public void StartVoiceTranscriptFlow(string transcript, Action<string> onSuccess, Action<string> onFailure)
+        {
+            StartCoroutine(CoVoiceTranscribeFlow(new VoiceTranscriptRequest { transcript = transcript }, onSuccess, onFailure));
+        }
+
+        public void StartVoiceAudioFlow(byte[] audioBytes, string contentType, Action<string> onSuccess, Action<string> onFailure)
+        {
+            if (audioBytes == null || audioBytes.Length == 0)
+            {
+                onFailure?.Invoke("invalid_prompt");
+                return;
+            }
+
+            StartCoroutine(CoVoiceTranscribeFlow(
+                new VoiceTranscriptRequest
+                {
+                    audio_base64 = Convert.ToBase64String(audioBytes),
+                    content_type = string.IsNullOrWhiteSpace(contentType) ? "audio/wav" : contentType
+                },
+                onSuccess,
+                onFailure));
         }
 
         public void RecordAssetImported(string assetId)
@@ -338,6 +375,46 @@ namespace Oasis.UI
             }
 
             yield return CoPollJobAndDownload(jobId, onSuccess, onFailure);
+        }
+
+        private IEnumerator CoVoiceTranscribeFlow(VoiceTranscriptRequest payload, Action<string> onSuccess, Action<string> onFailure)
+        {
+            string voiceUrl = NormalizeBaseUrl() + "/voice/transcribe";
+            string voiceJson = JsonUtility.ToJson(payload);
+
+            using (UnityWebRequest request = new UnityWebRequest(voiceUrl, "POST"))
+            {
+                byte[] bodyRaw = Encoding.UTF8.GetBytes(voiceJson);
+                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("Content-Type", "application/json");
+
+                yield return request.SendWebRequest();
+
+                if (request.result != UnityWebRequest.Result.Success)
+                {
+                    onFailure?.Invoke(ExtractErrorCode(request));
+                    yield break;
+                }
+
+                VoiceTranscriptResponse result = null;
+                try
+                {
+                    result = JsonUtility.FromJson<VoiceTranscriptResponse>(request.downloadHandler.text);
+                }
+                catch (Exception)
+                {
+                    // Fail below with a sanitized provider error.
+                }
+
+                if (result == null || string.IsNullOrWhiteSpace(result.transcript))
+                {
+                    onFailure?.Invoke("model_parse_error");
+                    yield break;
+                }
+
+                onSuccess?.Invoke(result.transcript);
+            }
         }
 
         private IEnumerator CoPollJobAndDownload(string jobId, Action<GeneratedOasisAsset> onSuccess, Action<string> onFailure)
