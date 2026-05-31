@@ -9,6 +9,7 @@ CLIENT = ROOT / "src/client"
 CAPTURE_SERVICE_PATH = CLIENT / "Assets/Scripts/Oasis/Capture/OasisCaptureService.cs"
 CREATOR_UI_PATH = CLIENT / "Assets/Scripts/Oasis/UI/OasisCreatorUI.cs"
 BOOTSTRAP_PATH = CLIENT / "Assets/Scripts/Oasis/Scene/OasisSceneBootstrap.cs"
+CAPTURE_DIR = CLIENT / "Assets/Scripts/Oasis/Capture"
 
 # ----------------- Dynamic/Unit checks of the logic in Python -----------------
 
@@ -33,6 +34,21 @@ def sanitize_filename_port(filename: str) -> str:
         
     return clean
 
+def sanitize_clip_directory_name_port(filename: str) -> str:
+    sanitized = sanitize_filename_port(filename)
+    without_extension = os.path.splitext(os.path.basename(sanitized))[0]
+    if not without_extension.strip():
+        without_extension = "clip_default"
+
+    clean = without_extension.strip()
+    invalid_chars = '<>:"/\\|?*\0'
+    for char in invalid_chars:
+        clean = clean.replace(char, "_")
+    clean = clean.replace("/", "_").replace("\\", "_").replace("..", "_").replace(":", "_")
+    if not clean.strip() or clean in {".", ".."}:
+        clean = "clip_default"
+    return clean
+
 def is_path_contained_port(parent_dir: str, child_path: str) -> bool:
     """Python port of the C# IsPathContained logic for verification."""
     try:
@@ -55,6 +71,13 @@ def test_python_filename_sanitization() -> None:
     # Empty or whitespace only
     assert sanitize_filename_port("") == "capture_default"
     assert sanitize_filename_port("   ") == "capture_default"
+
+def test_python_clip_directory_sanitization() -> None:
+    assert sanitize_clip_directory_name_port("clip.mp4") == "clip"
+    assert sanitize_clip_directory_name_port("../../outside/clip.mp4") == "clip"
+    assert sanitize_clip_directory_name_port("bad:name?.mp4") == "bad_name_"
+    assert "/" not in sanitize_clip_directory_name_port("../bad/name.mp4")
+    assert "\\" not in sanitize_clip_directory_name_port("bad\\name.mp4")
 
 def test_python_path_containment() -> None:
     parent = "/app/captures"
@@ -81,6 +104,76 @@ def test_capture_service_containment_checks() -> None:
     # Assert checks are called inside both CaptureScreenshot and CaptureShortClip
     assert content.count("IsPathContained") >= 3, "IsPathContained must be called in both capture methods"
     assert content.count("SanitizeFilename") >= 3, "SanitizeFilename must be called in both capture methods"
+
+def test_short_clip_does_not_write_static_mp4_header() -> None:
+    content = CAPTURE_SERVICE_PATH.read_text(encoding="utf-8")
+    match = re.search(r"public bool CaptureShortClip\(.*?\n        \}", content, re.S)
+    assert match, "CaptureShortClip method must exist"
+    method = match.group(0)
+
+    forbidden = [
+        "mockMp4",
+        "ftypmp42",
+        ".mp4",
+        "File.WriteAllBytes(targetPath",
+    ]
+    for term in forbidden:
+        assert term not in method, f"CaptureShortClip must not write a fake static MP4 artifact. Found '{term}'."
+
+def test_short_clip_frame_sequence_and_manifest_contract() -> None:
+    content = CAPTURE_SERVICE_PATH.read_text(encoding="utf-8")
+
+    required_terms = [
+        "ShortClipDirectoryName",
+        "ShortClipFramesDirectoryName",
+        "ShortClipManifestName",
+        "CaptureFrameSequenceCoroutine",
+        "CaptureFrameSequenceNow",
+        "CaptureSingleFrame",
+        "ScreenCapture.CaptureScreenshotAsTexture",
+        "WaitForEndOfFrame",
+        "WriteClipManifest",
+        "ShortClipManifest",
+        "duration_seconds",
+        "frame_count",
+        "frames",
+        "manifest.json",
+        "frame_",
+        ".png",
+    ]
+    missing = [term for term in required_terms if term not in content]
+    assert not missing, "Short clip capture missing frame sequence/manifest terms: " + ", ".join(missing)
+
+def test_short_clip_output_paths_are_contained_and_sanitized() -> None:
+    capture_root = "/app/captures"
+    clip_name = sanitize_clip_directory_name_port("../../outside/bad:name?.mp4")
+    clips_dir = os.path.join(capture_root, "short_clips")
+    clip_dir = os.path.join(clips_dir, clip_name)
+    frames_dir = os.path.join(clip_dir, "frames")
+    frame_path = os.path.join(frames_dir, "frame_0000.png")
+    manifest_path = os.path.join(clip_dir, "manifest.json")
+
+    assert clip_name == "bad_name_"
+    assert is_path_contained_port(capture_root, clips_dir) is True
+    assert is_path_contained_port(clips_dir, clip_dir) is True
+    assert is_path_contained_port(clip_dir, frames_dir) is True
+    assert is_path_contained_port(frames_dir, frame_path) is True
+    assert is_path_contained_port(clip_dir, manifest_path) is True
+
+    escaped_manifest = os.path.join(clip_dir, "..", "..", "manifest.json")
+    assert is_path_contained_port(clip_dir, escaped_manifest) is False
+
+def test_capture_unity_meta_files_exist() -> None:
+    capture_meta = CAPTURE_DIR.with_suffix(".meta")
+    service_meta = CAPTURE_SERVICE_PATH.with_suffix(".cs.meta")
+
+    assert capture_meta.is_file(), "Unity Capture folder must have a .meta file"
+    assert service_meta.is_file(), "OasisCaptureService.cs must have a .meta file"
+
+    for meta_path in (capture_meta, service_meta):
+        content = meta_path.read_text(encoding="utf-8")
+        assert "fileFormatVersion: 2" in content
+        assert re.search(r"^guid: [a-f0-9]{32}$", content, re.M), f"{meta_path} must contain a Unity GUID"
 
 def test_no_network_or_api_keys_in_capture() -> None:
     content = CAPTURE_SERVICE_PATH.read_text(encoding="utf-8")
