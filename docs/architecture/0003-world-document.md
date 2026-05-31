@@ -52,6 +52,13 @@ Rules:
 - **Transform is canonical Unity space**: position/scale in **meters**, rotation as a
   **quaternion** `{x,y,z,w}` (unambiguous, Unity-native — no euler ambiguity). Scale is the
   *additional* transform on top of 0002's import normalization (default `1,1,1`).
+- **The transform is the canonical _authored_ placement and is value-stable.** It changes
+  **only** via the op-model `move` (§2); runtime simulation/physics MUST NOT mutate it.
+  Placed assets may carry **colliders** (player interaction) and are deterministically
+  ground-settled at placement (0002 §4 bottom-center pivot + ground-snap), but are
+  **kinematic w.r.t. their authored transform thereafter** — so save persists the authored
+  value and **`save → load → save` is idempotent**. (Dynamic physics on placed assets, if
+  ever needed, is an explicit opt-in that updates this doc first.)
 - `scene_settings` is an open, additive object — `time_of_day` (0..1) is the only key now;
   #17's day/night writes here later. Unknown keys are preserved on load, never dropped.
 - `schema_version` is required; bump it (and this doc) on any breaking change.
@@ -156,6 +163,10 @@ Rules:
 6. Load and bundle-import degrade gracefully on a missing/corrupt asset — never crash.
 7. Tests are mock-only, no network; CI stays green. Never read/commit
    CLAUDE.md/AGENT*.md/GEMINI.md/.env/secrets (public repo).
+8. The saved `transform` is the **authored placement**, mutated **only** by the op-model
+   `move`; runtime physics never drifts it (placed assets are **kinematic** w.r.t. their
+   authored transform post-placement). **`save → load → save` is idempotent.** Dynamic
+   physics on placed assets, if ever needed, is an explicit opt-in that updates this doc.
 
 ---
 
@@ -165,3 +176,9 @@ on retry); incorporated findings — full `place`/`delete` snapshots for byte-ex
 unique `instance_id`, self-contained client-local save (GLB fetched via the 0002 endpoint,
 not the server cache), all-or-nothing save, load-time checksum, bundle-relative resolution
 + sanitized filenames + checksum verify.*
+
+*Amended 2026-05-31 (Batch 3a seam-check, advisor-vetted):* **ADDED** the transform
+value-stability invariant (§1 + §5.8). The original locked §1 specified only the transform
+*representation* (meters + quaternion); Batch 3a's placed-asset physics surfaced that runtime
+gravity could drift the saved transform, making `save → load → save` non-idempotent — a real
+persisted-state corruption. The guarantee is now explicit; fix-forward tracked in #91.
