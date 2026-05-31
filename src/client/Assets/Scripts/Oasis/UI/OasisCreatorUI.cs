@@ -23,6 +23,8 @@ namespace Oasis.UI
         [SerializeField] private Button retryButton;
         [SerializeField] private Button undoButton;
         [SerializeField] private Button redoButton;
+        [SerializeField] private Button screenshotButton;
+        [SerializeField] private Button videoButton;
 
         [Header("State Panels")]
         [SerializeField] private GameObject generatingPanel;
@@ -39,6 +41,10 @@ namespace Oasis.UI
         public event Action<string> OnFlowFailed;
         public event Action OnUndoRequested;
         public event Action OnRedoRequested;
+
+        // Integration Seams for #18
+        public event Action OnScreenshotRequested;
+        public event Action OnVideoRequested;
 
         private OasisCreatorState currentState = OasisCreatorState.Idle;
         private OasisGenerationFacade facade;
@@ -75,6 +81,14 @@ namespace Oasis.UI
             if (redoButton != null)
             {
                 redoButton.onClick.AddListener(HandleRedoRequested);
+            }
+            if (screenshotButton != null)
+            {
+                screenshotButton.onClick.AddListener(HandleScreenshotRequested);
+            }
+            if (videoButton != null)
+            {
+                videoButton.onClick.AddListener(HandleVideoRequested);
             }
 
             // Ensure facade is present
@@ -158,6 +172,26 @@ namespace Oasis.UI
                     img.color = (canRedo && interactable) ? new Color(0.25f, 0.45f, 0.75f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f);
                 }
             }
+
+            if (screenshotButton != null)
+            {
+                screenshotButton.interactable = interactable;
+                Image img = screenshotButton.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.color = interactable ? new Color(0.4f, 0.2f, 0.7f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f);
+                }
+            }
+
+            if (videoButton != null)
+            {
+                videoButton.interactable = interactable;
+                Image img = videoButton.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.color = interactable ? new Color(0.8f, 0.3f, 0.3f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f);
+                }
+            }
         }
 
         private void HandleUndoRequested()
@@ -168,6 +202,16 @@ namespace Oasis.UI
         private void HandleRedoRequested()
         {
             OnRedoRequested?.Invoke();
+        }
+
+        private void HandleScreenshotRequested()
+        {
+            OnScreenshotRequested?.Invoke();
+        }
+
+        private void HandleVideoRequested()
+        {
+            OnVideoRequested?.Invoke();
         }
 
         public void SetState(OasisCreatorState state, string errorCode = null)
@@ -310,7 +354,7 @@ namespace Oasis.UI
             panelRect.anchorMax = new Vector2(0f, 1f);
             panelRect.pivot = new Vector2(0f, 1f);
             panelRect.anchoredPosition = new Vector2(20f, -20f);
-            panelRect.sizeDelta = new Vector2(340f, 160f);
+            panelRect.sizeDelta = new Vector2(340f, 210f);
 
             // 1. Prompt Input Field
             GameObject inputObj = new GameObject("PromptInputField");
@@ -550,6 +594,58 @@ namespace Oasis.UI
             retryBtnText.color = Color.white;
             retryBtnText.fontSize = 11f;
             retryBtnText.alignment = TextAlignmentOptions.Center;
+
+            // 6. Screenshot Button
+            GameObject ssBtnObj = new GameObject("ScreenshotButton");
+            ssBtnObj.transform.SetParent(panelObj.transform, false);
+            RectTransform ssBtnRect = ssBtnObj.AddComponent<RectTransform>();
+            ssBtnRect.anchorMin = new Vector2(0.5f, 1f);
+            ssBtnRect.anchorMax = new Vector2(0.5f, 1f);
+            ssBtnRect.pivot = new Vector2(0.5f, 1f);
+            ssBtnRect.anchoredPosition = new Vector2(-60f, -100f);
+            ssBtnRect.sizeDelta = new Vector2(110f, 30f);
+
+            Image ssBtnImage = ssBtnObj.AddComponent<Image>();
+            ssBtnImage.color = new Color(0.4f, 0.2f, 0.7f, 1f); // Sleek Indigo
+            screenshotButton = ssBtnObj.AddComponent<Button>();
+
+            GameObject ssBtnTextObj = new GameObject("Text");
+            ssBtnTextObj.transform.SetParent(ssBtnObj.transform, false);
+            RectTransform ssBtnTextRect = ssBtnTextObj.AddComponent<RectTransform>();
+            ssBtnTextRect.anchorMin = Vector2.zero;
+            ssBtnTextRect.anchorMax = Vector2.one;
+            ssBtnTextRect.sizeDelta = Vector2.zero;
+            TextMeshProUGUI ssBtnText = ssBtnTextObj.AddComponent<TextMeshProUGUI>();
+            ssBtnText.text = "Screenshot";
+            ssBtnText.color = Color.white;
+            ssBtnText.fontSize = 13f;
+            ssBtnText.alignment = TextAlignmentOptions.Center;
+
+            // 7. Video Button
+            GameObject vidBtnObj = new GameObject("VideoButton");
+            vidBtnObj.transform.SetParent(panelObj.transform, false);
+            RectTransform vidBtnRect = vidBtnObj.AddComponent<RectTransform>();
+            vidBtnRect.anchorMin = new Vector2(0.5f, 1f);
+            vidBtnRect.anchorMax = new Vector2(0.5f, 1f);
+            vidBtnRect.pivot = new Vector2(0.5f, 1f);
+            vidBtnRect.anchoredPosition = new Vector2(60f, -100f);
+            vidBtnRect.sizeDelta = new Vector2(110f, 30f);
+
+            Image vidBtnImage = vidBtnObj.AddComponent<Image>();
+            vidBtnImage.color = new Color(0.8f, 0.3f, 0.3f, 1f); // Sleek Coral/Red
+            videoButton = vidBtnObj.AddComponent<Button>();
+
+            GameObject vidBtnTextObj = new GameObject("Text");
+            vidBtnTextObj.transform.SetParent(vidBtnObj.transform, false);
+            RectTransform vidBtnTextRect = vidBtnTextObj.AddComponent<RectTransform>();
+            vidBtnTextRect.anchorMin = Vector2.zero;
+            vidBtnTextRect.anchorMax = Vector2.one;
+            vidBtnTextRect.sizeDelta = Vector2.zero;
+            TextMeshProUGUI vidBtnText = vidBtnTextObj.AddComponent<TextMeshProUGUI>();
+            vidBtnText.text = "Capture Clip";
+            vidBtnText.color = Color.white;
+            vidBtnText.fontSize = 13f;
+            vidBtnText.alignment = TextAlignmentOptions.Center;
         }
     }
 }
