@@ -1,0 +1,32 @@
+{
+  "asset_id": "123e4567-e89b-12d3-a456-426614174000",
+  "source_prompt": "a wooden chair",
+  "normalized_prompt": "wooden chair",
+  "spec": {
+    "schema_version": "1.0",
+    "source_prompt": "a wooden chair",
+    "normalized_prompt": "wooden chair",
+    "object_type": "furniture",
+    "name": "wooden chair",
+    "materials": ["wood", "fabric"],
+    "style": "medieval",
+    "dimensions": {
+      "width": 0.5,
+      "height": 1.0,
+      "depth": 0.5
+    },
+    "details": ["carved armrests", "high back"],
+    "meshy_prompt": "a medieval wooden chair with carved armrests and a high back, fabric seat"
+  },
+  "provider": "meshy.ai",
+  "job_id": "meshy-job-1",
+  "source_url": "https://provider.example/assets/temporary.glb",
+  "fetch_path": "/assets/123e4567-e89b-12d3-a456-426614174000",
+  "local_path": "assets/generated/123e4567-e89b-12d3-a456-426614174000.glb",
+  "checksum_sha256": "688abcd757353d1cdf790627573d65462264c3cea62507e7cb80f1863340c3cb",
+  "format": "glb",
+  "file_size_bytes": 20,
+  "triangle_count": 12345,
+  "texture_count": 2,
+  "created_at": "2026-05-30T00:00:00Z"
+}
