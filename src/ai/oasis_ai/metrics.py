@@ -99,6 +99,7 @@ def derive_phase1_metrics(
         completion_ratio = len(object_placed_prompt_ids & submitted_prompt_ids) / len(submitted_prompt_ids)
 
     refine_counts = hook_refine_counts or list(refine_cycle_counts.values())
+    average_refine_cycles = (sum(refine_counts) / len(refine_counts)) if refine_counts else None
 
     return {
         "generation_latency": MetricResult(
@@ -116,8 +117,8 @@ def derive_phase1_metrics(
         "refinement_cycles": MetricResult(
             sample_count=len(refine_counts),
             target=REFINE_CYCLES_TARGET,
-            value=(sum(refine_counts) / len(refine_counts)) if refine_counts else None,
-            passed=(max(refine_counts) < REFINE_CYCLES_TARGET) if refine_counts else None,
+            value=average_refine_cycles,
+            passed=(average_refine_cycles < REFINE_CYCLES_TARGET) if average_refine_cycles is not None else None,
         ).as_dict(),
         "flow_completion": MetricResult(
             sample_count=len(completion_values) if completion_values else len(submitted_prompt_ids),

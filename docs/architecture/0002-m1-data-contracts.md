@@ -216,6 +216,9 @@ Typed errors, mapped to HTTP status:
 | `timeout` | stage exceeds its budget | 504 |
 | `asset_not_found` | unknown `asset_id` / `job_id` | 404 |
 | `asset_invalid` | importer rejects the asset (#7 validation) | 422 |
+| `spend_guard_exceeded` | local Meshy generation cap reached | 429 |
+| `microphone_error` | voice input unavailable or unreadable | 400 |
+| `network_error` | client/server network path failed | 502 |
 
 Error responses carry **only** the typed `error_code` + a safe human message — never the
 raw Claude/Meshy exception text (it can leak keys/paths; see §7). Async failures surface

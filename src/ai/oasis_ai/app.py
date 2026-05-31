@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 
 from fastapi import FastAPI, Request
@@ -13,6 +14,9 @@ from .models import ErrorResponse, GenerateResponse, JobResponse, PromptRequest,
 from .service import AnthropicSpecClient, RefineService, SpecError, SpecService
 from .telemetry import LocalTelemetry, elapsed_ms, new_prompt_id, new_session_id
 from .voice import VoiceError, VoiceService
+
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -124,6 +128,8 @@ def create_app(
                     refine_cycles=payload.refine_cycles,
                 )
             )
+        else:
+            logger.warning("User-study observation discarded because no hook sink is configured.")
         return UserStudyObservationResponse(status="recorded")
 
     @api.post(

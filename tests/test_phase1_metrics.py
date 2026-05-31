@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -158,6 +159,37 @@ def test_metrics_derivation_reports_phase1_targets(tmp_path: Path) -> None:
     assert metrics["flow_completion"]["value"] == 1.0
     assert metrics["asset_quality"]["value"] == 7.5
     assert metrics["inputs"]["schema"] == "0002-section-5-jsonl-plus-sanitized-study-hooks"
+
+
+def test_refinement_cycles_value_and_pass_use_average() -> None:
+    observations = [
+        UserStudyObservation(session_id=f"s{index}", prompt_id=f"p{index}", refine_cycles=cycles)
+        for index, cycles in enumerate([0, 0, 0, 5], start=1)
+    ]
+
+    metrics = derive_phase1_metrics([], observations)
+
+    assert metrics["refinement_cycles"]["value"] == 1.25
+    assert metrics["refinement_cycles"]["passed"] is True
+
+
+def test_user_study_hook_without_sink_logs_warning(tmp_path: Path, caplog) -> None:
+    client = TestClient(create_app(telemetry=LocalTelemetry(tmp_path / "telemetry.jsonl", enabled=False)))
+
+    with caplog.at_level(logging.WARNING, logger="oasis_ai.app"):
+        response = client.post(
+            "/metrics/user-study",
+            json={
+                "session_id": "s1",
+                "prompt_id": "p1",
+                "flow_completed": True,
+                "quality_score": 8,
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "recorded"}
+    assert "no hook sink is configured" in caplog.text
 
 
 def test_phase1_metrics_cli_reads_jsonl(tmp_path: Path) -> None:
