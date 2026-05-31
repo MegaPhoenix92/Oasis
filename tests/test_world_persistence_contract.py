@@ -150,6 +150,7 @@ def _load_world(root: Path, world_id: str) -> tuple[dict, list[dict], list[dict]
             skipped.append({"instance_id": item["instance_id"], "reason": "asset_checksum_mismatch"})
             continue
         loaded.append(item)
+    world = world | {"objects": loaded}
     return world, loaded, skipped
 
 
@@ -314,6 +315,28 @@ def test_missing_or_corrupt_asset_skips_object_gracefully_on_load(tmp_path: Path
     assert {item["reason"] for item in skipped} == {"asset_missing"}
 
 
+def test_degraded_load_prunes_skipped_objects_so_world_can_resave(tmp_path: Path) -> None:
+    manifest = _manifest()
+    world = _world()
+    _save_world(tmp_path, world, {manifest["asset_id"]: manifest}, lambda _: GLB)
+    asset_path = tmp_path / world["world_id"] / "assets" / f"{manifest['asset_id']}.glb"
+    asset_path.unlink()
+
+    degraded_world, loaded, skipped = _load_world(tmp_path, world["world_id"])
+
+    assert loaded == []
+    assert {item["reason"] for item in skipped} == {"asset_missing"}
+    assert degraded_world["objects"] == []
+
+    degraded_world["updated_at"] = "2026-05-31T00:03:00Z"
+    _save_world(tmp_path, degraded_world, {}, lambda _: pytest.fail("no skipped asset should be fetched"))
+    reloaded_world, reloaded, skipped = _load_world(tmp_path, world["world_id"])
+
+    assert reloaded_world["objects"] == []
+    assert reloaded == []
+    assert skipped == []
+
+
 def test_export_bundle_is_sanitized_zip_of_saved_world_layout(tmp_path: Path) -> None:
     manifest = _manifest()
     world = _world() | {"name": "../QA: World?*"}
@@ -406,3 +429,17 @@ def test_scene_settings_extraction_ignores_string_value_collisions() -> None:
     assert "keyBuilder.ToString()" in persistence
     assert "json[colonIndex] != ':'" in persistence
     assert "continue;" in persistence
+
+
+def test_world_serializer_escapes_json_control_characters_and_prunes_degraded_loads() -> None:
+    persistence = (PERSISTENCE_DIR / "OasisWorldPersistence.cs").read_text(encoding="utf-8")
+
+    assert 'builder.Append("\\\\n")' in persistence
+    assert 'builder.Append("\\\\t")' in persistence
+    assert 'builder.Append("\\\\r")' in persistence
+    assert 'builder.Append("\\\\b")' in persistence
+    assert 'builder.Append("\\\\f")' in persistence
+    assert "current < ' '" in persistence
+    assert 'builder.Append("\\\\u").Append(((int)current).ToString("x4", CultureInfo.InvariantCulture))' in persistence
+    assert "List<OasisWorldObject> loadableObjects" in persistence
+    assert "document.objects = loadableObjects.ToArray()" in persistence

@@ -404,7 +404,7 @@ namespace Oasis.Persistence
                     return result;
                 }
 
-                result.Document = document;
+                List<OasisWorldObject> loadableObjects = new List<OasisWorldObject>();
 
                 foreach (OasisWorldObject worldObject in document.objects)
                 {
@@ -420,7 +420,10 @@ namespace Oasis.Persistence
                     result.GlbBytesByAssetId[worldObject.asset_id] = loadedAsset.GlbBytes;
 
                     if (importer == null)
+                    {
+                        loadableObjects.Add(worldObject);
                         continue;
+                    }
 
                     GameObject imported = await importer.ImportFromBytesAsync(loadedAsset.GlbBytes, loadedAsset.ManifestJson, Vector3.zero, cancellationToken: cancellationToken);
                     if (imported == null)
@@ -432,7 +435,11 @@ namespace Oasis.Persistence
                     ApplyTransform(imported.transform, worldObject.transform);
                     imported.name = "OasisObject_" + worldObject.instance_id;
                     result.ImportedObjects.Add(imported);
+                    loadableObjects.Add(worldObject);
                 }
+
+                document.objects = loadableObjects.ToArray();
+                result.Document = document;
             }
             catch (Exception)
             {
@@ -1014,7 +1021,44 @@ namespace Oasis.Persistence
 
         private static string EscapeJson(string value)
         {
-            return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
+            StringBuilder builder = new StringBuilder(value.Length);
+            foreach (char current in value)
+            {
+                switch (current)
+                {
+                    case '\\':
+                        builder.Append("\\\\");
+                        break;
+                    case '"':
+                        builder.Append("\\\"");
+                        break;
+                    case '\b':
+                        builder.Append("\\b");
+                        break;
+                    case '\f':
+                        builder.Append("\\f");
+                        break;
+                    case '\n':
+                        builder.Append("\\n");
+                        break;
+                    case '\r':
+                        builder.Append("\\r");
+                        break;
+                    case '\t':
+                        builder.Append("\\t");
+                        break;
+                    default:
+                        if (current < ' ')
+                            builder.Append("\\u").Append(((int)current).ToString("x4", CultureInfo.InvariantCulture));
+                        else
+                            builder.Append(current);
+                        break;
+                }
+            }
+            return builder.ToString();
         }
 
         private static string SanitizeBundleFilename(string displayName, string fallbackWorldId)
