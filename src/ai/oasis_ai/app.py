@@ -8,20 +8,22 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from .generation import GenerationError, GenerationService, HttpxMeshyClient
-from .models import ErrorResponse, GenerateResponse, JobResponse, PromptRequest, Spec
-from .service import AnthropicSpecClient, SpecError, SpecService
+from .models import ErrorResponse, GenerateResponse, JobResponse, PromptRequest, RefineRequest, RefineResult, Spec
+from .service import AnthropicSpecClient, RefineService, SpecError, SpecService
 from .telemetry import LocalTelemetry, elapsed_ms, new_prompt_id, new_session_id
 
 
 def create_app(
     service: SpecService | None = None,
     generation_service: GenerationService | None = None,
+    refine_service: RefineService | None = None,
     telemetry: LocalTelemetry | None = None,
 ) -> FastAPI:
     api = FastAPI(title="Oasis AI Service", version="0.1.0")
     api.state.spec_service = service or SpecService(AnthropicSpecClient())
     api.state.telemetry = telemetry or LocalTelemetry()
     api.state.generation_service = generation_service or GenerationService(HttpxMeshyClient(), telemetry=api.state.telemetry)
+    api.state.refine_service = refine_service or RefineService(api.state.spec_service.client)
 
     @api.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -31,6 +33,11 @@ def create_app(
     def create_spec(payload: PromptRequest, request: Request) -> Spec:
         spec_service: SpecService = request.app.state.spec_service
         return spec_service.create_spec(payload.prompt)
+
+    @api.post("/refine", response_model=RefineResult, responses={400: {"model": ErrorResponse}, 502: {"model": ErrorResponse}, 504: {"model": ErrorResponse}})
+    def refine(payload: RefineRequest, request: Request) -> RefineResult:
+        service: RefineService = request.app.state.refine_service
+        return service.refine(payload.prior_spec, payload.directive)
 
     @api.post(
         "/generate",

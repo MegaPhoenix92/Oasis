@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -34,6 +34,67 @@ class PromptRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt: str
+
+
+class RefineRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prior_spec: Spec
+    directive: str
+
+
+class TransformVector3(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+    z: float
+
+
+class TransformScaleFactor(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float = Field(gt=0)
+    y: float = Field(gt=0)
+    z: float = Field(gt=0)
+
+
+class TransformQuaternion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    x: float
+    y: float
+    z: float
+    w: float
+
+
+class TransformDelta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scale_factor: TransformScaleFactor
+    rotation_delta: TransformQuaternion
+    translate: TransformVector3
+
+
+class TransformRefineResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["transform"]
+    transform_delta: TransformDelta
+    rationale: str = Field(min_length=1)
+    spec: None = None
+
+
+class RespecRefineResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["respec"]
+    spec: Spec
+    rationale: str = Field(min_length=1)
+    transform_delta: None = None
+
+
+RefineResult = Annotated[TransformRefineResult | RespecRefineResult, Field(discriminator="kind")]
 
 
 class ErrorResponse(BaseModel):

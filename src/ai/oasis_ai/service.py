@@ -9,9 +9,9 @@ import time
 from dataclasses import dataclass
 from typing import Protocol
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
-from .models import Spec
+from .models import RefineResult, Spec
 
 MODEL_ID = "claude-sonnet-4-6"
 MAX_PROMPT_CHARS = 1_000
@@ -25,6 +25,13 @@ schema_version must be "1.0". dimensions are meters and must include width, heig
 materials and details are arrays of strings. meshy_prompt is a concise natural-language
 3D generation prompt derived from the user's request."""
 
+REFINE_SYSTEM_PROMPT = """You classify an Oasis object refinement directive.
+Return only one JSON object matching exactly one of these shapes:
+{"kind":"transform","transform_delta":{"scale_factor":{"x":1.0,"y":1.0,"z":1.0},"rotation_delta":{"x":0.0,"y":0.0,"z":0.0,"w":1.0},"translate":{"x":0.0,"y":0.0,"z":0.0}},"rationale":"..."}
+or
+{"kind":"respec","spec":{a full Oasis Spec},"rationale":"..."}.
+Use transform only for scale/rotate/move directives. Use respec for geometry, material, identity, or style changes. Ambiguous directives must be respec."""
+
 
 class SpecError(Exception):
     def __init__(self, error_code: str, message: str, status_code: int) -> None:
@@ -35,7 +42,7 @@ class SpecError(Exception):
 
 
 class ClaudeSpecClient(Protocol):
-    def complete(self, prompt: str, normalized_prompt: str) -> str:
+    def complete(self, prompt: str, normalized_prompt: str, system_prompt: str = SYSTEM_PROMPT) -> str:
         """Return raw model text for a prompt."""
 
 
@@ -50,7 +57,7 @@ class AnthropicSpecClient:
         self.model = model
         self.max_tokens = max_tokens
 
-    def complete(self, prompt: str, normalized_prompt: str) -> str:
+    def complete(self, prompt: str, normalized_prompt: str, system_prompt: str = SYSTEM_PROMPT) -> str:
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise SpecError("provider_error", "Claude API key is not configured.", 502)
@@ -74,7 +81,7 @@ class AnthropicSpecClient:
                     model=self.model,
                     max_tokens=self.max_tokens,
                     temperature=0,
-                    system=SYSTEM_PROMPT,
+                    system=system_prompt,
                     messages=[{"role": "user", "content": user_prompt}],
                 )
                 return _message_text(message)
@@ -115,6 +122,23 @@ class SpecService:
         return spec
 
 
+class RefineService:
+    def __init__(self, client: ClaudeSpecClient) -> None:
+        self.client = client
+
+    def refine(self, prior_spec: Spec, directive: str) -> RefineResult:
+        normalized_directive = normalize_prompt(directive)
+        user_prompt = (
+            "Prior Oasis Spec JSON:\n"
+            f"{prior_spec.model_dump_json()}\n"
+            "Directive:\n"
+            f"{directive}\n"
+            "Classify as transform or respec according to the locked 0004 contract."
+        )
+        raw_output = self.client.complete(user_prompt, normalized_directive, REFINE_SYSTEM_PROMPT)
+        return parse_refine_result(raw_output, prior_spec, directive)
+
+
 def normalize_prompt(prompt: str) -> str:
     normalized = re.sub(r"\s+", " ", prompt).strip().lower()
     if not normalized:
@@ -138,6 +162,18 @@ def parse_spec(raw_output: str, source_prompt: str, normalized_prompt: str) -> S
             "normalized_prompt": normalized_prompt,
         }
     )
+
+
+def parse_refine_result(raw_output: str, prior_spec: Spec, directive: str) -> RefineResult:
+    try:
+        data = json.loads(_extract_json(raw_output))
+        if data.get("kind") == "respec" and isinstance(data.get("spec"), dict):
+            composed_source = f"{prior_spec.source_prompt} \u2192 {directive}"
+            data["spec"]["source_prompt"] = composed_source
+            data["spec"]["normalized_prompt"] = normalize_prompt(composed_source)
+        return TypeAdapter(RefineResult).validate_python(data)
+    except (json.JSONDecodeError, TypeError, ValidationError, ValueError) as exc:
+        raise SpecError("model_parse_error", "Claude response did not match the RefineResult schema.", 502) from exc
 
 
 def _extract_json(text: str) -> str:
