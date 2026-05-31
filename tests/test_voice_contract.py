@@ -19,6 +19,8 @@ def test_voice_backend_is_server_side_stt_adapter_only() -> None:
     assert "VoiceTranscriptResponse" in models
     assert "OASIS_STT_API_KEY" in voice
     assert "os.getenv(self.api_key_env)" in voice
+    assert "self.client = httpx.Client" in voice
+    assert "response = self.client.post" in voice
     assert "raise VoiceError(\"provider_error\", \"Speech-to-text provider request failed.\"" in voice
     assert "logger" not in voice.lower()
     assert "print(" not in voice
@@ -63,6 +65,9 @@ def test_voice_recording_handles_microphone_edge_cases() -> None:
     assert "if (voiceClip == null)" in ui
     assert "Microphone.IsRecording(null)" in ui
     assert "voiceClip.samples" in ui
+    assert "Coroutine voiceTimeoutCoroutine" in ui
+    assert "StartCoroutine(CoWatchVoiceRecordingTimeout())" in ui
+    assert "StopCoroutine(voiceTimeoutCoroutine)" in ui
 
 
 def test_stt_secret_names_are_not_in_unity_client() -> None:

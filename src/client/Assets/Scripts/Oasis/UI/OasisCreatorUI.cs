@@ -59,6 +59,7 @@ namespace Oasis.UI
         private OasisSpec selectedPriorSpec;
         private AudioClip voiceClip;
         private bool isVoiceRecording;
+        private Coroutine voiceTimeoutCoroutine;
 
         public OasisCreatorState CurrentState => currentState;
         public string SelectedInstanceId => selectedInstanceId;
@@ -283,10 +284,17 @@ namespace Oasis.UI
 
             isVoiceRecording = true;
             UpdateUndoRedoButtonInteractivity();
+            voiceTimeoutCoroutine = StartCoroutine(CoWatchVoiceRecordingTimeout());
         }
 
         private void FinishVoiceRecording()
         {
+            if (voiceTimeoutCoroutine != null)
+            {
+                StopCoroutine(voiceTimeoutCoroutine);
+                voiceTimeoutCoroutine = null;
+            }
+
             bool wasRecording = Microphone.IsRecording(null);
             int samplePosition = wasRecording ? Microphone.GetPosition(null) : (voiceClip != null ? voiceClip.samples : 0);
             Microphone.End(null);
@@ -869,6 +877,16 @@ namespace Oasis.UI
                 }
 
                 return stream.ToArray();
+            }
+        }
+
+        private System.Collections.IEnumerator CoWatchVoiceRecordingTimeout()
+        {
+            yield return new WaitForSeconds(voiceMaxSeconds);
+            voiceTimeoutCoroutine = null;
+            if (isVoiceRecording)
+            {
+                FinishVoiceRecording();
             }
         }
     }

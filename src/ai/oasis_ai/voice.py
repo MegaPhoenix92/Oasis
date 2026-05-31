@@ -45,6 +45,7 @@ class HttpSttClient:
         self.model_env = model_env
         self.url = url
         self.timeout_seconds = timeout_seconds
+        self.client = httpx.Client(timeout=timeout_seconds)
 
     def transcribe_file(self, audio_path: Path, content_type: str) -> str:
         api_key = os.getenv(self.api_key_env)
@@ -57,7 +58,7 @@ class HttpSttClient:
                 files = {"file": (audio_path.name, handle, content_type or "application/octet-stream")}
                 data = {"model": model}
                 headers = {"Authorization": f"Bearer {api_key}"}
-                response = httpx.post(self.url, headers=headers, data=data, files=files, timeout=self.timeout_seconds)
+                response = self.client.post(self.url, headers=headers, data=data, files=files)
                 response.raise_for_status()
                 payload = response.json()
         except httpx.TimeoutException as exc:
