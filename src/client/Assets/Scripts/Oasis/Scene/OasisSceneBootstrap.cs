@@ -7,6 +7,11 @@ namespace Oasis.Scene
     public sealed class OasisSceneBootstrap : MonoBehaviour
     {
         [SerializeField] private Material groundMaterial;
+        private OasisPlacementAnchor placementAnchor;
+        private OasisGlbImporter glbImporter;
+        private OasisCreatorUI creatorUI;
+        private GameObject activeImportedObject;
+        private OasisGenerationFacade.GeneratedOasisAsset activeAsset;
 
         private void Awake()
         {
@@ -21,16 +26,57 @@ namespace Oasis.Scene
             GameObject target = new GameObject("Camera Target");
             target.transform.position = new Vector3(0f, 1f, 0f);
 
-            OasisPlacementAnchor anchor = gameObject.AddComponent<OasisPlacementAnchor>();
-            anchor.Initialize(marker.transform);
+            placementAnchor = gameObject.AddComponent<OasisPlacementAnchor>();
+            placementAnchor.Initialize(marker.transform);
 
             gameObject.AddComponent<OasisGridOverlay>();
-            gameObject.AddComponent<OasisGlbImporter>();
-            gameObject.AddComponent<OasisCreatorUI>();
+            glbImporter = gameObject.AddComponent<OasisGlbImporter>();
+            creatorUI = gameObject.AddComponent<OasisCreatorUI>();
+            creatorUI.OnGenerationReady += HandleGenerationReady;
+            creatorUI.OnPlaceRequested += HandlePlaceRequested;
             CreateLighting();
             CreateCamera(target.transform);
 
             Debug.Log("Oasis scene foundation ready: ground, grid, lighting, camera, and GLB importer initialized.");
+        }
+
+        private async void HandleGenerationReady(OasisGenerationFacade.GeneratedOasisAsset asset)
+        {
+            if (asset == null || glbImporter == null || placementAnchor == null)
+                return;
+
+            if (activeImportedObject != null)
+                Destroy(activeImportedObject);
+
+            activeAsset = asset;
+            activeImportedObject = await glbImporter.ImportFromBytesAsync(asset.GlbBytes, asset.ManifestJson, placementAnchor.LastGroundPoint);
+            if (activeImportedObject != null && creatorUI != null)
+                creatorUI.RecordAssetImported(asset.Manifest.asset_id);
+        }
+
+        private void HandlePlaceRequested()
+        {
+            if (activeImportedObject == null || activeAsset == null || placementAnchor == null)
+                return;
+
+            MoveObjectToAnchor(activeImportedObject, placementAnchor.LastGroundPoint);
+            if (creatorUI != null)
+                creatorUI.RecordObjectPlaced(activeAsset.Manifest.asset_id);
+            Debug.Log($"Oasis asset placed in scene: asset_id={activeAsset.Manifest.asset_id}, point={placementAnchor.LastGroundPoint}");
+        }
+
+        private static void MoveObjectToAnchor(GameObject importedRoot, Vector3 groundAnchor)
+        {
+            Renderer[] renderers = importedRoot.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+                return;
+
+            Bounds bounds = renderers[0].bounds;
+            for (int index = 1; index < renderers.Length; index++)
+                bounds.Encapsulate(renderers[index].bounds);
+
+            Vector3 bottomCenter = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+            importedRoot.transform.position += groundAnchor - bottomCenter;
         }
 
         private void CreateGround()
