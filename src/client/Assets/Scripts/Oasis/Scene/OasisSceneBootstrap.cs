@@ -132,6 +132,7 @@ namespace Oasis.Scene
                 await RestoreRefineInMemoryAsync(op.before);
             }
 
+            PurgeUnreferencedInSessionAssets();
             UpdateUndoRedoUI();
         }
 
@@ -157,6 +158,7 @@ namespace Oasis.Scene
                 await RestoreRefineInMemoryAsync(op.after);
             }
 
+            PurgeUnreferencedInSessionAssets();
             UpdateUndoRedoUI();
         }
 
@@ -303,8 +305,7 @@ namespace Oasis.Scene
                     }
                     UpdateTransformInWorld(instanceId, toTransform);
 
-                    creatorHistory.PushOperation(op);
-                    UpdateUndoRedoUI();
+                    PushCreatorOperation(op);
                 }
             }
         }
@@ -332,6 +333,11 @@ namespace Oasis.Scene
 
             GameObject previousObject = gameObjectByInstanceId.TryGetValue(instanceId, out GameObject existing) ? existing : null;
             GameObject replacement = null;
+            bool documentReplaced = false;
+            bool previousRemovedFromList = false;
+            bool replacementTrackedInList = false;
+            bool replacementMapped = false;
+            bool committed = false;
 
             try
             {
@@ -353,6 +359,19 @@ namespace Oasis.Scene
                 OasisWorldObject after = CloneWorldObject(before);
                 after.asset_id = generatedAsset.Manifest.asset_id;
                 ReplaceWorldObject(after);
+                documentReplaced = true;
+
+                if (previousObject != null)
+                {
+                    placedWorldObjects.Remove(previousObject);
+                    previousRemovedFromList = true;
+                }
+                placedWorldObjects.Add(replacement);
+                replacementTrackedInList = true;
+                gameObjectByInstanceId[instanceId] = replacement;
+                replacementMapped = true;
+                if (creatorUI != null)
+                    creatorUI.SetSelectedObject(instanceId, generatedAsset.Manifest.spec);
 
                 OasisCreatorOperation op = new OasisCreatorOperation
                 {
@@ -361,29 +380,45 @@ namespace Oasis.Scene
                     after = CloneWorldObject(after)
                 };
                 creatorHistory.PushOperation(op);
-                UpdateUndoRedoUI();
-
-                if (previousObject != null)
-                {
-                    placedWorldObjects.Remove(previousObject);
-                    Destroy(previousObject);
-                }
-                placedWorldObjects.Add(replacement);
-                gameObjectByInstanceId[instanceId] = replacement;
-                if (creatorUI != null)
-                    creatorUI.SetSelectedObject(instanceId, generatedAsset.Manifest.spec);
+                committed = true;
             }
             catch (Exception)
             {
-                ReplaceWorldObject(before);
+                if (replacementTrackedInList && replacement != null)
+                    placedWorldObjects.Remove(replacement);
+
+                if (replacementMapped && gameObjectByInstanceId.TryGetValue(instanceId, out GameObject mapped) && mapped == replacement)
+                    gameObjectByInstanceId.Remove(instanceId);
+
+                if (previousObject != null)
+                {
+                    if (previousRemovedFromList && !placedWorldObjects.Contains(previousObject))
+                        placedWorldObjects.Add(previousObject);
+                    gameObjectByInstanceId[instanceId] = previousObject;
+                }
+
+                if (documentReplaced)
+                    ReplaceWorldObject(before);
+
+                if (creatorUI != null)
+                    creatorUI.SetSelectedObject(instanceId, FindAssetSpec(before.asset_id));
+
                 if (replacement != null)
                     Destroy(replacement);
-                if (previousObject != null)
-                    gameObjectByInstanceId[instanceId] = previousObject;
+
+                PurgeUnreferencedInSessionAssets();
             }
             finally
             {
                 FinishRespec(instanceId);
+            }
+
+            if (committed)
+            {
+                if (previousObject != null)
+                    Destroy(previousObject);
+                PurgeUnreferencedInSessionAssets();
+                UpdateUndoRedoUI();
             }
         }
 
@@ -409,8 +444,7 @@ namespace Oasis.Scene
 
                 DeleteObjectInMemory(instanceId);
 
-                creatorHistory.PushOperation(op);
-                UpdateUndoRedoUI();
+                PushCreatorOperation(op);
             }
         }
 
@@ -469,6 +503,28 @@ namespace Oasis.Scene
                 }
             }
             return !creatorHistory.ReferencesAsset(assetId);
+        }
+
+        private void PurgeUnreferencedInSessionAssets()
+        {
+            HashSet<string> assetIds = new HashSet<string>(manifestJsonByAssetId.Keys);
+            assetIds.UnionWith(glbBytesByAssetId.Keys);
+
+            foreach (string assetId in assetIds)
+            {
+                if (!CanEvictInSessionAsset(assetId))
+                    continue;
+
+                manifestJsonByAssetId.Remove(assetId);
+                glbBytesByAssetId.Remove(assetId);
+            }
+        }
+
+        private void PushCreatorOperation(OasisCreatorOperation op)
+        {
+            creatorHistory.PushOperation(op);
+            PurgeUnreferencedInSessionAssets();
+            UpdateUndoRedoUI();
         }
 
         private bool TryBeginRespec(string instanceId)
@@ -612,8 +668,7 @@ namespace Oasis.Scene
                 type = "place",
                 snapshot = CloneWorldObject(worldObject)
             };
-            creatorHistory.PushOperation(op);
-            UpdateUndoRedoUI();
+            PushCreatorOperation(op);
 
             if (creatorUI != null)
             {
