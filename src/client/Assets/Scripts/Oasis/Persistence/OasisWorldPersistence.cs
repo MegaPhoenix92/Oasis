@@ -67,6 +67,14 @@ namespace Oasis.Persistence
         public bool Success => !Failure.IsFailure;
     }
 
+    internal sealed class OasisLoadedAsset
+    {
+        public string ManifestJson { get; set; }
+        public byte[] GlbBytes { get; set; }
+        public OasisWorldPersistenceFailure Failure { get; set; } = OasisWorldPersistenceFailure.None;
+        public bool Success => !Failure.IsFailure;
+    }
+
     public sealed class OasisWorldExportResult
     {
         public string BundlePath { get; internal set; } = string.Empty;
@@ -118,13 +126,19 @@ namespace Oasis.Persistence
         private const string BundleExtension = ".oasisworld";
 
         [SerializeField] private string worldsDirectoryName = "OasisWorlds";
+        private string cachedWorldsRootPath;
 
         public string WorldsRootPath
         {
             get
             {
-                string basePath = string.IsNullOrWhiteSpace(Application.persistentDataPath) ? "." : Application.persistentDataPath;
-                return Path.GetFullPath(Path.Combine(basePath, worldsDirectoryName));
+                if (string.IsNullOrWhiteSpace(cachedWorldsRootPath))
+                {
+                    string basePath = string.IsNullOrWhiteSpace(Application.persistentDataPath) ? "." : Application.persistentDataPath;
+                    cachedWorldsRootPath = Path.GetFullPath(Path.Combine(basePath, worldsDirectoryName));
+                }
+
+                return cachedWorldsRootPath;
             }
         }
 
@@ -161,8 +175,10 @@ namespace Oasis.Persistence
                 foreach (string assetId in assetIds)
                 {
                     OasisWorldObject assetProbe = new OasisWorldObject { instance_id = string.Empty, asset_id = assetId };
-                    if (!TryLoadAssetForObject(worldDirectory, assetProbe, out _, out _, out failure))
+                    OasisLoadedAsset loadedAsset = await LoadAssetForObjectAsync(worldDirectory, assetProbe, cancellationToken);
+                    if (!loadedAsset.Success)
                     {
+                        failure = loadedAsset.Failure;
                         result.Failure = new OasisWorldPersistenceFailure(failure.Code, failure.Message, assetId: assetId);
                         return result;
                     }
@@ -227,47 +243,27 @@ namespace Oasis.Persistence
 
             try
             {
-                string worldJson;
-                OasisWorldDocument document;
-                using (FileStream stream = new FileStream(bundlePath, FileMode.Open, FileAccess.Read, FileShare.Read))
-                using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read))
+                string worldJson = await ReadBundleWorldJsonAsync(bundlePath, cancellationToken);
+                if (string.IsNullOrWhiteSpace(worldJson))
                 {
-                    ZipArchiveEntry worldEntry = archive.GetEntry(WorldFileName);
-                    if (worldEntry == null)
-                    {
-                        result.Failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.InvalidWorldDocument, "World bundle is missing world.json.");
-                        return result;
-                    }
-
-                    worldJson = ReadArchiveEntryText(worldEntry);
-                    if (!TryParseWorldDocument(worldJson, out document, out OasisWorldPersistenceFailure failure))
-                    {
-                        result.Failure = failure;
-                        return result;
-                    }
-                    if (!TryResolveWorldDirectory(document.world_id, out worldDirectory, out failure))
-                    {
-                        result.Failure = failure;
-                        return result;
-                    }
-
-                    string root = WorldsRootPath;
-                    tempDirectory = Path.Combine(root, document.world_id + ".import-" + Guid.NewGuid().ToString("N"));
-                    backupDirectory = Path.Combine(root, document.world_id + ".bak-" + Guid.NewGuid().ToString("N"));
-                    Directory.CreateDirectory(Path.Combine(tempDirectory, ManifestsDirectoryName));
-                    Directory.CreateDirectory(Path.Combine(tempDirectory, AssetsDirectoryName));
-                    await WriteAllTextAsync(Path.Combine(tempDirectory, WorldFileName), worldJson, cancellationToken);
-
-                    foreach (string assetId in GetReferencedAssetIds(document))
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        if (!TryReadVerifiedBundleAsset(archive, assetId, out string manifestJson, out byte[] glbBytes))
-                            continue;
-
-                        await WriteAllTextAsync(Path.Combine(tempDirectory, ManifestsDirectoryName, assetId + ".json"), manifestJson, cancellationToken);
-                        await WriteAllBytesAsync(Path.Combine(tempDirectory, AssetsDirectoryName, assetId + ".glb"), glbBytes, cancellationToken);
-                    }
+                    result.Failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.InvalidWorldDocument, "World bundle is missing world.json.");
+                    return result;
                 }
+                if (!TryParseWorldDocument(worldJson, out OasisWorldDocument document, out OasisWorldPersistenceFailure failure))
+                {
+                    result.Failure = failure;
+                    return result;
+                }
+                if (!TryResolveWorldDirectory(document.world_id, out worldDirectory, out failure))
+                {
+                    result.Failure = failure;
+                    return result;
+                }
+
+                string root = WorldsRootPath;
+                tempDirectory = Path.Combine(root, document.world_id + ".import-" + Guid.NewGuid().ToString("N"));
+                backupDirectory = Path.Combine(root, document.world_id + ".bak-" + Guid.NewGuid().ToString("N"));
+                await WriteVerifiedBundleAssetsToDirectoryAsync(bundlePath, tempDirectory, worldJson, GetReferencedAssetIds(document), cancellationToken);
 
                 if (Directory.Exists(worldDirectory))
                 {
@@ -413,19 +409,20 @@ namespace Oasis.Persistence
                 foreach (OasisWorldObject worldObject in document.objects)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (!TryLoadAssetForObject(worldDirectory, worldObject, out string manifestJson, out byte[] glbBytes, out OasisWorldPersistenceFailure skipped))
+                    OasisLoadedAsset loadedAsset = await LoadAssetForObjectAsync(worldDirectory, worldObject, cancellationToken);
+                    if (!loadedAsset.Success)
                     {
-                        AddSkipped(result, worldObject, skipped);
+                        AddSkipped(result, worldObject, loadedAsset.Failure);
                         continue;
                     }
 
-                    result.ManifestJsonByAssetId[worldObject.asset_id] = manifestJson;
-                    result.GlbBytesByAssetId[worldObject.asset_id] = glbBytes;
+                    result.ManifestJsonByAssetId[worldObject.asset_id] = loadedAsset.ManifestJson;
+                    result.GlbBytesByAssetId[worldObject.asset_id] = loadedAsset.GlbBytes;
 
                     if (importer == null)
                         continue;
 
-                    GameObject imported = await importer.ImportFromBytesAsync(glbBytes, manifestJson, Vector3.zero, cancellationToken: cancellationToken);
+                    GameObject imported = await importer.ImportFromBytesAsync(loadedAsset.GlbBytes, loadedAsset.ManifestJson, Vector3.zero, cancellationToken: cancellationToken);
                     if (imported == null)
                     {
                         AddSkipped(result, worldObject, new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.ImportFailed, "Saved asset import failed.", worldObject.instance_id, worldObject.asset_id));
@@ -545,48 +542,56 @@ namespace Oasis.Persistence
             return true;
         }
 
-        private bool TryLoadAssetForObject(string worldDirectory, OasisWorldObject worldObject, out string manifestJson, out byte[] glbBytes, out OasisWorldPersistenceFailure failure)
+        private async Task<OasisLoadedAsset> LoadAssetForObjectAsync(string worldDirectory, OasisWorldObject worldObject, CancellationToken cancellationToken)
         {
-            manifestJson = null;
-            glbBytes = null;
-            failure = OasisWorldPersistenceFailure.None;
-
             if (!IsUuid(worldObject.asset_id))
             {
-                failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.InvalidAssetId, "Saved object asset_id is not a UUID.", worldObject.instance_id, worldObject.asset_id);
-                return false;
+                return new OasisLoadedAsset
+                {
+                    Failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.InvalidAssetId, "Saved object asset_id is not a UUID.", worldObject.instance_id, worldObject.asset_id)
+                };
             }
 
             string manifestPath = Path.Combine(worldDirectory, ManifestsDirectoryName, worldObject.asset_id + ".json");
             string assetPath = Path.Combine(worldDirectory, AssetsDirectoryName, worldObject.asset_id + ".glb");
             if (!IsWithinDirectory(worldDirectory, manifestPath) || !IsWithinDirectory(worldDirectory, assetPath))
             {
-                failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.InvalidAssetId, "Saved asset path was rejected.", worldObject.instance_id, worldObject.asset_id);
-                return false;
+                return new OasisLoadedAsset
+                {
+                    Failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.InvalidAssetId, "Saved asset path was rejected.", worldObject.instance_id, worldObject.asset_id)
+                };
             }
 
             if (!File.Exists(manifestPath) || !File.Exists(assetPath))
             {
-                failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.AssetMissing, "Saved asset manifest or GLB is missing.", worldObject.instance_id, worldObject.asset_id);
-                return false;
+                return new OasisLoadedAsset
+                {
+                    Failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.AssetMissing, "Saved asset manifest or GLB is missing.", worldObject.instance_id, worldObject.asset_id)
+                };
             }
 
-            manifestJson = File.ReadAllText(manifestPath, Encoding.UTF8);
+            string manifestJson = await ReadAllTextAsync(manifestPath, cancellationToken);
             if (!OasisAssetManifestValidator.TryParseAndValidate(manifestJson, out OasisAssetManifest manifest, out _) || manifest.asset_id != worldObject.asset_id)
             {
-                failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.AssetInvalid, "Saved asset manifest is invalid.", worldObject.instance_id, worldObject.asset_id);
-                return false;
+                return new OasisLoadedAsset
+                {
+                    Failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.AssetInvalid, "Saved asset manifest is invalid.", worldObject.instance_id, worldObject.asset_id)
+                };
             }
 
-            glbBytes = File.ReadAllBytes(assetPath);
-            if (!OasisAssetManifestValidator.ValidateAssetBytes(glbBytes, manifest, out _) || !ValidateChecksum(glbBytes, manifest, out failure))
+            byte[] glbBytes = await ReadAllBytesAsync(assetPath, cancellationToken);
+            if (!OasisAssetManifestValidator.ValidateAssetBytes(glbBytes, manifest, out _) || !ValidateChecksum(glbBytes, manifest, out OasisWorldPersistenceFailure failure))
             {
                 if (!failure.IsFailure)
                     failure = new OasisWorldPersistenceFailure(OasisWorldPersistenceErrorCode.AssetInvalid, "Saved GLB is invalid.", worldObject.instance_id, worldObject.asset_id);
-                return false;
+                return new OasisLoadedAsset { Failure = failure };
             }
 
-            return true;
+            return new OasisLoadedAsset
+            {
+                ManifestJson = manifestJson,
+                GlbBytes = glbBytes,
+            };
         }
 
         private static void AddFileToArchive(ZipArchive archive, string entryName, string sourcePath)
@@ -633,6 +638,50 @@ namespace Oasis.Persistence
                 glbBytes = null;
                 return false;
             }
+        }
+
+        private static Task<string> ReadBundleWorldJsonAsync(string bundlePath, CancellationToken cancellationToken)
+        {
+            return Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                using FileStream stream = new FileStream(bundlePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read);
+                ZipArchiveEntry worldEntry = archive.GetEntry(WorldFileName);
+                if (worldEntry == null)
+                    return null;
+
+                return ReadArchiveEntryText(worldEntry);
+            }, cancellationToken);
+        }
+
+        private static Task WriteVerifiedBundleAssetsToDirectoryAsync(
+            string bundlePath,
+            string tempDirectory,
+            string worldJson,
+            IEnumerable<string> assetIds,
+            CancellationToken cancellationToken)
+        {
+            List<string> assetIdList = new List<string>(assetIds);
+            return Task.Run(() =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Directory.CreateDirectory(Path.Combine(tempDirectory, ManifestsDirectoryName));
+                Directory.CreateDirectory(Path.Combine(tempDirectory, AssetsDirectoryName));
+                File.WriteAllText(Path.Combine(tempDirectory, WorldFileName), worldJson, Encoding.UTF8);
+
+                using FileStream stream = new FileStream(bundlePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read);
+                foreach (string assetId in assetIdList)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!TryReadVerifiedBundleAsset(archive, assetId, out string manifestJson, out byte[] glbBytes))
+                        continue;
+
+                    File.WriteAllText(Path.Combine(tempDirectory, ManifestsDirectoryName, assetId + ".json"), manifestJson, Encoding.UTF8);
+                    File.WriteAllBytes(Path.Combine(tempDirectory, AssetsDirectoryName, assetId + ".glb"), glbBytes);
+                }
+            }, cancellationToken);
         }
 
         private static string ReadArchiveEntryText(ZipArchiveEntry entry)
@@ -774,6 +823,11 @@ namespace Oasis.Persistence
         private static Task<string> ReadAllTextAsync(string path, CancellationToken cancellationToken)
         {
             return Task.Run(() => File.ReadAllText(path, Encoding.UTF8), cancellationToken);
+        }
+
+        private static Task<byte[]> ReadAllBytesAsync(string path, CancellationToken cancellationToken)
+        {
+            return Task.Run(() => File.ReadAllBytes(path), cancellationToken);
         }
 
         private static Task WriteAllTextAsync(string path, string contents, CancellationToken cancellationToken)

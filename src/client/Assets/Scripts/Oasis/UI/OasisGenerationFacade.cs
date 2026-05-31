@@ -93,10 +93,17 @@ namespace Oasis.UI
 
     public class OasisGenerationFacade : MonoBehaviour
     {
+        private const float FrameBudgetTargetFps = 60f;
+        private const float FrameBudgetSampleIntervalSeconds = 1f;
+
         public string backendBaseUrl = "http://localhost:8000";
         private readonly string sessionId = Guid.NewGuid().ToString();
         private string activePromptId;
         private float activeFlowStartedAt;
+        private bool frameBudgetActive;
+        private float frameBudgetMaxFrameMs;
+        private float frameBudgetNextSampleAt;
+        private int frameBudgetSamples;
 
         public sealed class GeneratedOasisAsset
         {
@@ -150,6 +157,19 @@ namespace Oasis.UI
                 onFailure));
         }
 
+        private void Update()
+        {
+            if (!frameBudgetActive)
+                return;
+
+            float frameMs = Mathf.Max(0f, Time.unscaledDeltaTime * 1000f);
+            frameBudgetSamples++;
+            frameBudgetMaxFrameMs = Mathf.Max(frameBudgetMaxFrameMs, frameMs);
+
+            if (Time.realtimeSinceStartup >= frameBudgetNextSampleAt)
+                EmitFrameBudgetSample(continueSampling: true);
+        }
+
         public void RecordAssetImported(string assetId)
         {
             EmitTelemetry("asset_imported", assetId: assetId);
@@ -164,6 +184,7 @@ namespace Oasis.UI
         {
             activePromptId = Guid.NewGuid().ToString();
             activeFlowStartedAt = Time.realtimeSinceStartup;
+            BeginFrameBudgetCounter();
             EmitTelemetry("prompt_submitted");
 
             // 1. POST /create to submit the locked prompt -> spec -> generation chain.
@@ -185,6 +206,7 @@ namespace Oasis.UI
                 {
                     string errorCode = ExtractErrorCode(request);
                     EmitTelemetry("flow_failed", errorCode: errorCode);
+                    FlushFrameBudgetCounter();
                     onFailure?.Invoke(errorCode);
                     yield break;
                 }
@@ -202,6 +224,7 @@ namespace Oasis.UI
                 if (genRes == null || string.IsNullOrEmpty(genRes.job_id))
                 {
                     EmitTelemetry("flow_failed", errorCode: "provider_error");
+                    FlushFrameBudgetCounter();
                     onFailure?.Invoke("provider_error");
                     yield break;
                 }
@@ -218,6 +241,7 @@ namespace Oasis.UI
                 if (Time.realtimeSinceStartup - startTime > 90f)
                 {
                     EmitTelemetry("flow_failed", errorCode: "timeout");
+                    FlushFrameBudgetCounter();
                     onFailure?.Invoke("timeout");
                     yield break;
                 }
@@ -232,6 +256,7 @@ namespace Oasis.UI
                     {
                         string errorCode = ExtractErrorCode(request);
                         EmitTelemetry("flow_failed", errorCode: errorCode);
+                        FlushFrameBudgetCounter();
                         onFailure?.Invoke(errorCode);
                         yield break;
                     }
@@ -249,6 +274,7 @@ namespace Oasis.UI
                     if (jobRes == null)
                     {
                         EmitTelemetry("flow_failed", errorCode: "provider_error");
+                        FlushFrameBudgetCounter();
                         onFailure?.Invoke("provider_error");
                         yield break;
                     }
@@ -259,6 +285,7 @@ namespace Oasis.UI
                         if (jobRes.manifest == null || string.IsNullOrEmpty(jobRes.manifest.asset_id) || !IsValidFetchPath(jobRes.manifest))
                         {
                             EmitTelemetry("flow_failed", errorCode: "asset_invalid");
+                            FlushFrameBudgetCounter();
                             onFailure?.Invoke("asset_invalid");
                         }
                         else
@@ -272,6 +299,7 @@ namespace Oasis.UI
                     {
                         string err = string.IsNullOrEmpty(jobRes.error_code) ? "provider_error" : jobRes.error_code;
                         EmitTelemetry("flow_failed", errorCode: err);
+                        FlushFrameBudgetCounter();
                         onFailure?.Invoke(err);
                         yield break;
                     }
@@ -332,6 +360,7 @@ namespace Oasis.UI
         {
             activePromptId = Guid.NewGuid().ToString();
             activeFlowStartedAt = Time.realtimeSinceStartup;
+            BeginFrameBudgetCounter();
 
             string generateUrl = NormalizeBaseUrl() + "/generate";
             string specJson = JsonUtility.ToJson(spec);
@@ -350,6 +379,7 @@ namespace Oasis.UI
                 {
                     string errorCode = ExtractErrorCode(request);
                     EmitTelemetry("flow_failed", errorCode: errorCode);
+                    FlushFrameBudgetCounter();
                     onFailure?.Invoke(errorCode);
                     yield break;
                 }
@@ -367,6 +397,7 @@ namespace Oasis.UI
                 if (genRes == null || string.IsNullOrEmpty(genRes.job_id))
                 {
                     EmitTelemetry("flow_failed", errorCode: "provider_error");
+                    FlushFrameBudgetCounter();
                     onFailure?.Invoke("provider_error");
                     yield break;
                 }
@@ -427,6 +458,7 @@ namespace Oasis.UI
                 if (Time.realtimeSinceStartup - startTime > 90f)
                 {
                     EmitTelemetry("flow_failed", errorCode: "timeout");
+                    FlushFrameBudgetCounter();
                     onFailure?.Invoke("timeout");
                     yield break;
                 }
@@ -441,6 +473,7 @@ namespace Oasis.UI
                     {
                         string errorCode = ExtractErrorCode(request);
                         EmitTelemetry("flow_failed", errorCode: errorCode);
+                        FlushFrameBudgetCounter();
                         onFailure?.Invoke(errorCode);
                         yield break;
                     }
@@ -458,6 +491,7 @@ namespace Oasis.UI
                     if (jobRes == null)
                     {
                         EmitTelemetry("flow_failed", errorCode: "provider_error");
+                        FlushFrameBudgetCounter();
                         onFailure?.Invoke("provider_error");
                         yield break;
                     }
@@ -468,6 +502,7 @@ namespace Oasis.UI
                         if (jobRes.manifest == null || string.IsNullOrEmpty(jobRes.manifest.asset_id) || !IsValidFetchPath(jobRes.manifest))
                         {
                             EmitTelemetry("flow_failed", errorCode: "asset_invalid");
+                            FlushFrameBudgetCounter();
                             onFailure?.Invoke("asset_invalid");
                         }
                         else
@@ -481,6 +516,7 @@ namespace Oasis.UI
                     {
                         string err = string.IsNullOrEmpty(jobRes.error_code) ? "provider_error" : jobRes.error_code;
                         EmitTelemetry("flow_failed", errorCode: err);
+                        FlushFrameBudgetCounter();
                         onFailure?.Invoke(err);
                         yield break;
                     }
@@ -501,6 +537,7 @@ namespace Oasis.UI
                 {
                     string errorCode = ExtractErrorCode(request);
                     EmitTelemetry("flow_failed", provider: manifest.provider, errorCode: errorCode, assetId: manifest.asset_id);
+                    FlushFrameBudgetCounter();
                     onFailure?.Invoke(errorCode);
                     yield break;
                 }
@@ -509,11 +546,13 @@ namespace Oasis.UI
                 if (glbBytes == null || glbBytes.Length == 0)
                 {
                     EmitTelemetry("flow_failed", provider: manifest.provider, errorCode: "asset_invalid", assetId: manifest.asset_id);
+                    FlushFrameBudgetCounter();
                     onFailure?.Invoke("asset_invalid");
                     yield break;
                 }
 
                 EmitTelemetry("asset_downloaded", provider: manifest.provider, assetId: manifest.asset_id);
+                FlushFrameBudgetCounter();
                 onSuccess?.Invoke(new GeneratedOasisAsset(manifest, manifestJson, glbBytes));
             }
         }
@@ -528,12 +567,50 @@ namespace Oasis.UI
             return string.IsNullOrWhiteSpace(backendBaseUrl) ? "http://localhost:8000" : backendBaseUrl.TrimEnd('/');
         }
 
-        private void EmitTelemetry(string eventName, string provider = "", string errorCode = "", string assetId = "")
+        private void BeginFrameBudgetCounter()
+        {
+            frameBudgetActive = true;
+            frameBudgetMaxFrameMs = 0f;
+            frameBudgetSamples = 0;
+            frameBudgetNextSampleAt = Time.realtimeSinceStartup + FrameBudgetSampleIntervalSeconds;
+        }
+
+        private void FlushFrameBudgetCounter()
+        {
+            if (!frameBudgetActive)
+                return;
+
+            EmitFrameBudgetSample(continueSampling: false);
+            frameBudgetActive = false;
+        }
+
+        private void EmitFrameBudgetSample(bool continueSampling)
+        {
+            if (frameBudgetSamples <= 0)
+                return;
+
+            float targetFrameMs = 1000f / FrameBudgetTargetFps;
+            if (frameBudgetMaxFrameMs > targetFrameMs)
+                Debug.LogWarning($"[OasisGenerationFacade] Frame budget sample exceeded 60 FPS target: {frameBudgetMaxFrameMs:0.0}ms");
+
+            EmitTelemetry(
+                "generation_submitted",
+                provider: "unity-frame-budget",
+                elapsedOverrideMs: Mathf.Max(0, Mathf.RoundToInt(frameBudgetMaxFrameMs)));
+            frameBudgetMaxFrameMs = 0f;
+            frameBudgetSamples = 0;
+            if (continueSampling)
+                frameBudgetNextSampleAt = Time.realtimeSinceStartup + FrameBudgetSampleIntervalSeconds;
+        }
+
+        private void EmitTelemetry(string eventName, string provider = "", string errorCode = "", string assetId = "", int elapsedOverrideMs = -1)
         {
             if (string.IsNullOrEmpty(activePromptId))
                 activePromptId = Guid.NewGuid().ToString();
 
-            int elapsedMs = Mathf.Max(0, Mathf.RoundToInt((Time.realtimeSinceStartup - activeFlowStartedAt) * 1000f));
+            int elapsedMs = elapsedOverrideMs >= 0
+                ? elapsedOverrideMs
+                : Mathf.Max(0, Mathf.RoundToInt((Time.realtimeSinceStartup - activeFlowStartedAt) * 1000f));
             string line = "{"
                 + "\"event\":\"" + EscapeJson(eventName) + "\","
                 + "\"session_id\":\"" + EscapeJson(sessionId) + "\","

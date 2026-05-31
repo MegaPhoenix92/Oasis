@@ -194,6 +194,11 @@ user-study hook (`/metrics/user-study`) that records only completion, quality sc
 voice-intent correctness, and refine-cycle counts. The hook must never carry raw prompts,
 transcripts, audio, provider exceptions, API keys, or participant PII.
 
+#22 records Unity frame-budget samples in the same local JSONL sink during active
+generation by emitting `generation_submitted` with `provider="unity-frame-budget"` and
+`elapsed_ms` set to the worst sampled frame time in milliseconds. This preserves the
+locked event set while making 60 FPS evidence derivable from frame time (`1000 / elapsed_ms`).
+
 **Performance budget (#9):** Claude < 5s · Meshy < 60s · import < 5s · **total < 90s**,
 working ≥ 80% of the time.
 
