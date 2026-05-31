@@ -96,10 +96,16 @@ def test_refine_respec_commit_is_atomic_and_preserves_instance_id() -> None:
     assert "after.asset_id = generatedAsset.Manifest.asset_id" in apply_refine
     assert "ReplaceWorldObject(after)" in apply_refine
     assert "creatorHistory.PushOperation(op)" in apply_refine
+    assert "placedWorldObjects.Remove(previousObject)" in apply_refine
+    assert apply_refine.find("creatorHistory.PushOperation(op)") < apply_refine.find("placedWorldObjects.Remove(previousObject)")
+    assert "gameObjectByInstanceId[instanceId] = replacement" in apply_refine
+    assert "creatorUI.SetSelectedObject(instanceId, generatedAsset.Manifest.spec)" in apply_refine
     assert "catch (Exception)" in apply_refine
     assert "ReplaceWorldObject(before)" in apply_refine
+    assert "Destroy(replacement)" in apply_refine
     assert "FinishRespec(instanceId)" in apply_refine
     assert "lock (respecInFlightLock)" in bootstrap_content
+    assert "creatorUI.ClearSelectedObject(instanceId)" in bootstrap_content
 
 
 def test_undo_redo_do_not_reference_generation_or_network_or_paths() -> None:

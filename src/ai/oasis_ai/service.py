@@ -148,6 +148,13 @@ def normalize_prompt(prompt: str) -> str:
     return normalized
 
 
+def normalize_lineage(prompt: str) -> str:
+    normalized = re.sub(r"\s+", " ", prompt).strip().lower()
+    if not normalized:
+        raise SpecError("invalid_prompt", "Prompt must not be empty.", 400)
+    return normalized
+
+
 def parse_spec(raw_output: str, source_prompt: str, normalized_prompt: str) -> Spec:
     try:
         data = json.loads(_extract_json(raw_output))
@@ -170,7 +177,7 @@ def parse_refine_result(raw_output: str, prior_spec: Spec, directive: str) -> Re
         if data.get("kind") == "respec" and isinstance(data.get("spec"), dict):
             composed_source = f"{prior_spec.source_prompt} \u2192 {directive}"
             data["spec"]["source_prompt"] = composed_source
-            data["spec"]["normalized_prompt"] = normalize_prompt(composed_source)
+            data["spec"]["normalized_prompt"] = normalize_lineage(composed_source)
         return TypeAdapter(RefineResult).validate_python(data)
     except (json.JSONDecodeError, TypeError, ValidationError, ValueError) as exc:
         raise SpecError("model_parse_error", "Claude response did not match the RefineResult schema.", 502) from exc

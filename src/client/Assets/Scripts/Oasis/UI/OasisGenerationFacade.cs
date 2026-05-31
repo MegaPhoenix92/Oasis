@@ -173,12 +173,12 @@ namespace Oasis.UI
             }
 
             // 3. Poll GET /jobs/{job_id} until ready or failed (timeout at 90s)
-            float startTime = Time.time;
+            float startTime = Time.realtimeSinceStartup;
             float pollInterval = 2.0f;
 
             while (true)
             {
-                if (Time.time - startTime > 90f)
+                if (Time.realtimeSinceStartup - startTime > 90f)
                 {
                     EmitTelemetry("flow_failed", errorCode: "timeout");
                     onFailure?.Invoke("timeout");
@@ -342,12 +342,12 @@ namespace Oasis.UI
 
         private IEnumerator CoPollJobAndDownload(string jobId, Action<GeneratedOasisAsset> onSuccess, Action<string> onFailure)
         {
-            float startTime = Time.time;
+            float startTime = Time.realtimeSinceStartup;
             float pollInterval = 2.0f;
 
             while (true)
             {
-                if (Time.time - startTime > 90f)
+                if (Time.realtimeSinceStartup - startTime > 90f)
                 {
                     EmitTelemetry("flow_failed", errorCode: "timeout");
                     onFailure?.Invoke("timeout");

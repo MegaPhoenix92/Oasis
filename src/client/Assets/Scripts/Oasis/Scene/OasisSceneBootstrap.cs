@@ -178,6 +178,9 @@ namespace Oasis.Scene
                 objects.RemoveAll(o => o.instance_id == instanceId);
                 activeWorld.objects = objects.ToArray();
             }
+
+            if (creatorUI != null)
+                creatorUI.ClearSelectedObject(instanceId);
         }
 
         private async Task RestoreObjectInMemoryAsync(OasisWorldObject snapshot)
@@ -328,11 +331,12 @@ namespace Oasis.Scene
                 return;
 
             GameObject previousObject = gameObjectByInstanceId.TryGetValue(instanceId, out GameObject existing) ? existing : null;
+            GameObject replacement = null;
 
             try
             {
                 PinInSessionAsset(before.asset_id);
-                GameObject replacement = await glbImporter.ImportFromBytesAsync(generatedAsset.GlbBytes, generatedAsset.ManifestJson, Vector3.zero);
+                replacement = await glbImporter.ImportFromBytesAsync(generatedAsset.GlbBytes, generatedAsset.ManifestJson, Vector3.zero);
                 if (replacement == null)
                     throw new InvalidOperationException("Refined asset import failed.");
 
@@ -345,13 +349,6 @@ namespace Oasis.Scene
                 behaviour.assetId = generatedAsset.Manifest.asset_id;
 
                 PinInSessionAsset(generatedAsset.Manifest.asset_id, generatedAsset.ManifestJson, generatedAsset.GlbBytes);
-                if (previousObject != null)
-                {
-                    placedWorldObjects.Remove(previousObject);
-                    Destroy(previousObject);
-                }
-                placedWorldObjects.Add(replacement);
-                gameObjectByInstanceId[instanceId] = replacement;
 
                 OasisWorldObject after = CloneWorldObject(before);
                 after.asset_id = generatedAsset.Manifest.asset_id;
@@ -365,10 +362,22 @@ namespace Oasis.Scene
                 };
                 creatorHistory.PushOperation(op);
                 UpdateUndoRedoUI();
+
+                if (previousObject != null)
+                {
+                    placedWorldObjects.Remove(previousObject);
+                    Destroy(previousObject);
+                }
+                placedWorldObjects.Add(replacement);
+                gameObjectByInstanceId[instanceId] = replacement;
+                if (creatorUI != null)
+                    creatorUI.SetSelectedObject(instanceId, generatedAsset.Manifest.spec);
             }
             catch (Exception)
             {
                 ReplaceWorldObject(before);
+                if (replacement != null)
+                    Destroy(replacement);
                 if (previousObject != null)
                     gameObjectByInstanceId[instanceId] = previousObject;
             }

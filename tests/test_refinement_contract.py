@@ -43,6 +43,17 @@ def test_client_refine_router_uses_selected_object_and_prior_manifest_spec() -> 
     assert "selectedInstanceId" in scene or "FindWorldObject(instanceId)" in scene
     assert "selectedPriorSpec" in ui
     assert "result.spec" in ui
+    assert "public string SelectedInstanceId" in ui
+    assert "ClearSelectedObject" in ui
+    assert "SetSelectedObject(instanceId, generatedAsset.Manifest.spec)" in scene
+
+
+def test_generation_polling_uses_realtime_clock_for_timeouts() -> None:
+    facade = (UI_DIR / "OasisGenerationFacade.cs").read_text(encoding="utf-8")
+    polling = facade[facade.find("private IEnumerator CoPollJobAndDownload"):facade.find("private IEnumerator CoDownloadAsset")]
+
+    assert "Time.realtimeSinceStartup" in polling
+    assert "Time.time - startTime" not in facade
 
 
 def test_transform_refine_reuses_move_and_never_generates() -> None:

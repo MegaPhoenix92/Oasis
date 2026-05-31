@@ -54,6 +54,7 @@ namespace Oasis.UI
         private OasisSpec selectedPriorSpec;
 
         public OasisCreatorState CurrentState => currentState;
+        public string SelectedInstanceId => selectedInstanceId;
 
         private void Awake()
         {
@@ -109,6 +110,15 @@ namespace Oasis.UI
         {
             selectedInstanceId = instanceId;
             selectedPriorSpec = priorSpec;
+        }
+
+        public void ClearSelectedObject(string instanceId = null)
+        {
+            if (!string.IsNullOrEmpty(instanceId) && selectedInstanceId != instanceId)
+                return;
+
+            selectedInstanceId = null;
+            selectedPriorSpec = null;
         }
 
         private void Update()
@@ -331,11 +341,12 @@ namespace Oasis.UI
 
         private void StartSelectedRespecRefine(RefineResult result)
         {
+            string refinedInstanceId = selectedInstanceId;
             facade.StartGenerationFromSpec(result.spec,
                 onSuccess: (asset) =>
                 {
                     SetState(OasisCreatorState.Idle);
-                    OnRefineAssetReady?.Invoke(selectedInstanceId, asset);
+                    OnRefineAssetReady?.Invoke(refinedInstanceId, asset);
                 },
                 onFailure: (errorCode) =>
                 {

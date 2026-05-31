@@ -131,6 +131,22 @@ def test_refine_respec_returns_full_spec_with_composed_lineage_and_no_job(tmp_pa
     assert fake_meshy.created_payloads == []
 
 
+def test_refine_respec_lineage_normalization_does_not_reapply_input_length_guard(tmp_path: Path) -> None:
+    fake = FakeClaudeClient([respec_output()])
+    prior = spec_payload()
+    prior["source_prompt"] = "A Wooden Chair " + ("with carved legs " * 80)
+    prior["normalized_prompt"] = prior["source_prompt"].lower()
+    client = client_with(fake, tmp_path)
+
+    response = client.post("/refine", json={"prior_spec": prior, "directive": "make it medieval"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["kind"] == "respec"
+    assert body["spec"]["source_prompt"].endswith("\u2192 make it medieval")
+    assert body["spec"]["normalized_prompt"].endswith("\u2192 make it medieval")
+
+
 def test_refine_rejects_bad_directive_and_sanitizes_model_parse_errors(tmp_path: Path) -> None:
     empty = client_with(FakeClaudeClient([]), tmp_path)
     empty_response = empty.post("/refine", json={"prior_spec": spec_payload(), "directive": " \n\t "})
