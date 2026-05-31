@@ -8,15 +8,17 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 
 from .generation import GenerationError, GenerationService, HttpxMeshyClient
-from .models import ErrorResponse, GenerateResponse, JobResponse, PromptRequest, RefineRequest, RefineResult, Spec
+from .models import ErrorResponse, GenerateResponse, JobResponse, PromptRequest, RefineRequest, RefineResult, Spec, VoiceTranscriptRequest, VoiceTranscriptResponse
 from .service import AnthropicSpecClient, RefineService, SpecError, SpecService
 from .telemetry import LocalTelemetry, elapsed_ms, new_prompt_id, new_session_id
+from .voice import VoiceError, VoiceService
 
 
 def create_app(
     service: SpecService | None = None,
     generation_service: GenerationService | None = None,
     refine_service: RefineService | None = None,
+    voice_service: VoiceService | None = None,
     telemetry: LocalTelemetry | None = None,
 ) -> FastAPI:
     api = FastAPI(title="Oasis AI Service", version="0.1.0")
@@ -24,6 +26,7 @@ def create_app(
     api.state.telemetry = telemetry or LocalTelemetry()
     api.state.generation_service = generation_service or GenerationService(HttpxMeshyClient(), telemetry=api.state.telemetry)
     api.state.refine_service = refine_service or RefineService(api.state.spec_service.client)
+    api.state.voice_service = voice_service or VoiceService()
 
     @api.get("/healthz")
     def healthz() -> dict[str, str]:
@@ -38,6 +41,16 @@ def create_app(
     def refine(payload: RefineRequest, request: Request) -> RefineResult:
         service: RefineService = request.app.state.refine_service
         return service.refine(payload.prior_spec, payload.directive)
+
+    @api.post(
+        "/voice/transcribe",
+        response_model=VoiceTranscriptResponse,
+        responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}, 502: {"model": ErrorResponse}, 504: {"model": ErrorResponse}},
+    )
+    def transcribe_voice(payload: VoiceTranscriptRequest, request: Request) -> VoiceTranscriptResponse:
+        voice: VoiceService = request.app.state.voice_service
+        transcript = voice.transcribe(transcript=payload.transcript, audio_base64=payload.audio_base64, content_type=payload.content_type)
+        return VoiceTranscriptResponse(transcript=transcript)
 
     @api.post(
         "/generate",
@@ -114,6 +127,13 @@ def create_app(
 
     @api.exception_handler(SpecError)
     def handle_spec_error(_: Request, exc: SpecError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=ErrorResponse(error_code=exc.error_code, message=exc.message).model_dump(),
+        )
+
+    @api.exception_handler(VoiceError)
+    def handle_voice_error(_: Request, exc: VoiceError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
             content=ErrorResponse(error_code=exc.error_code, message=exc.message).model_dump(),

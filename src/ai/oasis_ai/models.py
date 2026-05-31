@@ -37,6 +37,19 @@ class PromptRequest(BaseModel):
     prompt: str
 
 
+class VoiceTranscriptRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transcript: str | None = None
+    audio_base64: str | None = None
+    content_type: str | None = None
+    filename: str | None = None
+
+
+class VoiceTranscriptResponse(BaseModel):
+    transcript: str
+
+
 class RefineRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

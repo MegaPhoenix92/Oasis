@@ -1,4 +1,6 @@
 using System;
+using System.IO;
+using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -25,6 +27,7 @@ namespace Oasis.UI
         [SerializeField] private Button redoButton;
         [SerializeField] private Button screenshotButton;
         [SerializeField] private Button videoButton;
+        [SerializeField] private Button voiceButton;
 
         [Header("State Panels")]
         [SerializeField] private GameObject generatingPanel;
@@ -34,6 +37,8 @@ namespace Oasis.UI
 
         [Header("Configuration")]
         public string backendBaseUrl = "http://localhost:8000";
+        public int voiceSampleRate = 16000;
+        public int voiceMaxSeconds = 8;
 
         // Integration Seams for #9 and #21
         public event Action<OasisGenerationFacade.GeneratedOasisAsset> OnGenerationReady;
@@ -52,6 +57,8 @@ namespace Oasis.UI
         private OasisGenerationFacade facade;
         private string selectedInstanceId;
         private OasisSpec selectedPriorSpec;
+        private AudioClip voiceClip;
+        private bool isVoiceRecording;
 
         public OasisCreatorState CurrentState => currentState;
         public string SelectedInstanceId => selectedInstanceId;
@@ -94,6 +101,10 @@ namespace Oasis.UI
             if (videoButton != null)
             {
                 videoButton.onClick.AddListener(HandleVideoRequested);
+            }
+            if (voiceButton != null)
+            {
+                voiceButton.onClick.AddListener(HandleVoiceRequested);
             }
 
             // Ensure facade is present
@@ -212,6 +223,16 @@ namespace Oasis.UI
                     img.color = interactable ? new Color(0.8f, 0.3f, 0.3f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f);
                 }
             }
+
+            if (voiceButton != null)
+            {
+                voiceButton.interactable = interactable || isVoiceRecording;
+                Image img = voiceButton.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.color = isVoiceRecording ? new Color(0.9f, 0.2f, 0.2f, 1f) : (interactable ? new Color(0.15f, 0.5f, 0.55f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f));
+                }
+            }
         }
 
         private void HandleUndoRequested()
@@ -232,6 +253,58 @@ namespace Oasis.UI
         private void HandleVideoRequested()
         {
             OnVideoRequested?.Invoke();
+        }
+
+        private void HandleVoiceRequested()
+        {
+            if (isVoiceRecording)
+            {
+                FinishVoiceRecording();
+                return;
+            }
+
+            if (currentState == OasisCreatorState.Generating)
+                return;
+
+            if (Microphone.devices == null || Microphone.devices.Length == 0)
+            {
+                SetState(OasisCreatorState.Error, "invalid_prompt");
+                OnFlowFailed?.Invoke("invalid_prompt");
+                return;
+            }
+
+            voiceClip = Microphone.Start(null, false, voiceMaxSeconds, voiceSampleRate);
+            isVoiceRecording = true;
+            UpdateUndoRedoButtonInteractivity();
+        }
+
+        private void FinishVoiceRecording()
+        {
+            int samplePosition = Microphone.GetPosition(null);
+            Microphone.End(null);
+            isVoiceRecording = false;
+            UpdateUndoRedoButtonInteractivity();
+
+            if (voiceClip == null || samplePosition <= 0)
+            {
+                SetState(OasisCreatorState.Error, "invalid_prompt");
+                OnFlowFailed?.Invoke("invalid_prompt");
+                return;
+            }
+
+            byte[] wavBytes = EncodeWav(voiceClip, samplePosition);
+            SetState(OasisCreatorState.Generating);
+            facade.backendBaseUrl = backendBaseUrl;
+            facade.StartVoiceAudioFlow(
+                wavBytes,
+                "audio/wav",
+                "voice.wav",
+                onSuccess: SubmitVoiceTranscript,
+                onFailure: (errorCode) =>
+                {
+                    SetState(OasisCreatorState.Error, errorCode);
+                    OnFlowFailed?.Invoke(errorCode);
+                });
         }
 
         public void SetState(OasisCreatorState state, string errorCode = null)
@@ -331,6 +404,15 @@ namespace Oasis.UI
                     OnFlowFailed?.Invoke(errorCode);
                 }
             );
+        }
+
+        public void SubmitVoiceTranscript(string transcript)
+        {
+            if (promptInputField == null)
+                return;
+
+            promptInputField.text = transcript;
+            SubmitPrompt();
         }
 
         private void PerformSelectedTransformRefine(RefineResult result)
@@ -717,6 +799,68 @@ namespace Oasis.UI
             vidBtnText.color = Color.white;
             vidBtnText.fontSize = 13f;
             vidBtnText.alignment = TextAlignmentOptions.Center;
+
+            // 8. Voice Button
+            GameObject voiceBtnObj = new GameObject("VoiceButton");
+            voiceBtnObj.transform.SetParent(panelObj.transform, false);
+            RectTransform voiceBtnRect = voiceBtnObj.AddComponent<RectTransform>();
+            voiceBtnRect.anchorMin = new Vector2(0.5f, 1f);
+            voiceBtnRect.anchorMax = new Vector2(0.5f, 1f);
+            voiceBtnRect.pivot = new Vector2(0.5f, 1f);
+            voiceBtnRect.anchoredPosition = new Vector2(0f, -140f);
+            voiceBtnRect.sizeDelta = new Vector2(110f, 30f);
+
+            Image voiceBtnImage = voiceBtnObj.AddComponent<Image>();
+            voiceBtnImage.color = new Color(0.15f, 0.5f, 0.55f, 1f);
+            voiceButton = voiceBtnObj.AddComponent<Button>();
+
+            GameObject voiceBtnTextObj = new GameObject("Text");
+            voiceBtnTextObj.transform.SetParent(voiceBtnObj.transform, false);
+            RectTransform voiceBtnTextRect = voiceBtnTextObj.AddComponent<RectTransform>();
+            voiceBtnTextRect.anchorMin = Vector2.zero;
+            voiceBtnTextRect.anchorMax = Vector2.one;
+            voiceBtnTextRect.sizeDelta = Vector2.zero;
+            TextMeshProUGUI voiceBtnText = voiceBtnTextObj.AddComponent<TextMeshProUGUI>();
+            voiceBtnText.text = "Voice";
+            voiceBtnText.color = Color.white;
+            voiceBtnText.fontSize = 13f;
+            voiceBtnText.alignment = TextAlignmentOptions.Center;
+        }
+
+        private static byte[] EncodeWav(AudioClip clip, int sampleCount)
+        {
+            int channels = clip.channels;
+            int frequency = clip.frequency;
+            int clampedSamples = Mathf.Clamp(sampleCount, 0, clip.samples);
+            float[] samples = new float[clampedSamples * channels];
+            clip.GetData(samples, 0);
+
+            using (MemoryStream stream = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(stream))
+            {
+                int dataLength = samples.Length * 2;
+                writer.Write(Encoding.ASCII.GetBytes("RIFF"));
+                writer.Write(36 + dataLength);
+                writer.Write(Encoding.ASCII.GetBytes("WAVE"));
+                writer.Write(Encoding.ASCII.GetBytes("fmt "));
+                writer.Write(16);
+                writer.Write((short)1);
+                writer.Write((short)channels);
+                writer.Write(frequency);
+                writer.Write(frequency * channels * 2);
+                writer.Write((short)(channels * 2));
+                writer.Write((short)16);
+                writer.Write(Encoding.ASCII.GetBytes("data"));
+                writer.Write(dataLength);
+
+                for (int i = 0; i < samples.Length; i++)
+                {
+                    short value = (short)Mathf.Clamp(samples[i] * short.MaxValue, short.MinValue, short.MaxValue);
+                    writer.Write(value);
+                }
+
+                return stream.ToArray();
+            }
         }
     }
 }
