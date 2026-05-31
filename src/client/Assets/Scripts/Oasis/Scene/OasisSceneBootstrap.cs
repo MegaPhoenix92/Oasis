@@ -18,6 +18,7 @@ namespace Oasis.Scene
         private OasisTimeOfDayController timeOfDayController;
         private Light directionalSun;
         private OasisCreatorUI creatorUI;
+        private Oasis.Capture.OasisCaptureService captureService;
         private GameObject activeImportedObject;
         private OasisGenerationFacade.GeneratedOasisAsset activeAsset;
         private OasisWorldDocument activeWorld;
@@ -44,11 +45,14 @@ namespace Oasis.Scene
             gameObject.AddComponent<OasisGridOverlay>();
             glbImporter = gameObject.AddComponent<OasisGlbImporter>();
             worldPersistence = gameObject.AddComponent<OasisWorldPersistence>();
+            captureService = gameObject.AddComponent<Oasis.Capture.OasisCaptureService>();
             creatorUI = gameObject.AddComponent<OasisCreatorUI>();
             creatorUI.OnGenerationReady += HandleGenerationReady;
             creatorUI.OnPlaceRequested += HandlePlaceRequested;
             creatorUI.OnUndoRequested += HandleUndoRequested;
             creatorUI.OnRedoRequested += HandleRedoRequested;
+            creatorUI.OnScreenshotRequested += HandleScreenshotRequested;
+            creatorUI.OnVideoRequested += HandleVideoRequested;
             activeWorld = CreateNewWorldDocument("Untitled World");
             UpdateUndoRedoUI();
             directionalSun = CreateLighting();
@@ -594,6 +598,26 @@ namespace Oasis.Scene
                 rotation = new OasisWorldQuaternion { x = placedTransform.rotation.x, y = placedTransform.rotation.y, z = placedTransform.rotation.z, w = placedTransform.rotation.w },
                 scale = new OasisWorldVector3 { x = placedTransform.localScale.x, y = placedTransform.localScale.y, z = placedTransform.localScale.z }
             };
+        }
+
+        private void HandleScreenshotRequested()
+        {
+            if (captureService != null)
+            {
+                string filename = "screenshot_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string savedPath;
+                captureService.CaptureScreenshot(filename, out savedPath);
+            }
+        }
+
+        private void HandleVideoRequested()
+        {
+            if (captureService != null)
+            {
+                string filename = "video_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string savedPath;
+                captureService.CaptureShortClip(filename, 5.0f, out savedPath);
+            }
         }
     }
 }
