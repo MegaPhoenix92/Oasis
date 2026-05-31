@@ -43,7 +43,6 @@ class VoiceTranscriptRequest(BaseModel):
     transcript: str | None = None
     audio_base64: str | None = None
     content_type: str | None = None
-    filename: str | None = None
 
 
 class VoiceTranscriptResponse(BaseModel):

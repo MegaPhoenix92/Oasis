@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import os
+import time
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -45,7 +47,7 @@ def test_voice_audio_is_transient_and_temp_file_deleted_after_stt() -> None:
 
     response = client.post(
         "/voice/transcribe",
-        json={"audio_base64": audio_base64, "content_type": "audio/wav", "filename": "../ignored.wav"},
+        json={"audio_base64": audio_base64, "content_type": "audio/wav"},
     )
 
     assert response.status_code == 200
@@ -54,6 +56,18 @@ def test_voice_audio_is_transient_and_temp_file_deleted_after_stt() -> None:
     assert len(service.deleted_temp_paths) == 1
     assert not service.deleted_temp_paths[0].exists()
     assert service.deleted_temp_paths[0].name.startswith("oasis_voice_")
+
+
+def test_voice_service_sweeps_stale_temp_files_on_startup(tmp_path: Path) -> None:
+    stale = tmp_path / "oasis_voice_stale.wav"
+    stale.write_bytes(b"orphaned audio")
+    old = time.time() - 7200
+    os.utime(stale, (old, old))
+
+    service = VoiceService(FakeSttClient(), temp_dir=tmp_path)
+
+    assert service.swept_temp_paths == [stale]
+    assert not stale.exists()
 
 
 def test_voice_rejects_empty_or_invalid_payload_with_sanitized_error() -> None:

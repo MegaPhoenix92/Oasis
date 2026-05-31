@@ -6,6 +6,7 @@ import base64
 import binascii
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Protocol
 
@@ -16,6 +17,7 @@ from .service import SpecError, normalize_prompt
 OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions"
 DEFAULT_STT_MODEL = "gpt-4o-mini-transcribe"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
+STALE_TEMP_SECONDS = 60 * 60
 
 
 class VoiceError(SpecError):
@@ -64,9 +66,12 @@ class HttpSttClient:
 
 
 class VoiceService:
-    def __init__(self, stt_client: SttClient | None = None) -> None:
+    def __init__(self, stt_client: SttClient | None = None, temp_dir: Path | None = None) -> None:
         self.stt_client = stt_client or HttpSttClient()
+        self.temp_dir = temp_dir or Path(tempfile.gettempdir())
         self.deleted_temp_paths: list[Path] = []
+        self.swept_temp_paths: list[Path] = []
+        self._sweep_stale_temp_files()
 
     def transcribe(self, *, transcript: str | None = None, audio_base64: str | None = None, content_type: str | None = None) -> str:
         if transcript is not None and transcript.strip():
@@ -79,7 +84,7 @@ class VoiceService:
         suffix = _suffix_for_content_type(content_type)
         temp_path: Path | None = None
         try:
-            with tempfile.NamedTemporaryFile(prefix="oasis_voice_", suffix=suffix, delete=False) as handle:
+            with tempfile.NamedTemporaryFile(prefix="oasis_voice_", suffix=suffix, dir=self.temp_dir, delete=False) as handle:
                 temp_path = Path(handle.name)
                 handle.write(audio_bytes)
             return self.stt_client.transcribe_file(temp_path, content_type or "application/octet-stream")
@@ -90,6 +95,16 @@ class VoiceService:
                     self.deleted_temp_paths.append(temp_path)
                 except OSError:
                     pass
+
+    def _sweep_stale_temp_files(self) -> None:
+        cutoff = time.time() - STALE_TEMP_SECONDS
+        for path in self.temp_dir.glob("oasis_voice_*"):
+            try:
+                if path.is_file() and path.stat().st_mtime < cutoff:
+                    path.unlink(missing_ok=True)
+                    self.swept_temp_paths.append(path)
+            except OSError:
+                pass
 
 
 def _safe_transcript(transcript: str) -> str:

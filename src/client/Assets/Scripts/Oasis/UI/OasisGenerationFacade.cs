@@ -68,7 +68,6 @@ namespace Oasis.UI
         public string transcript;
         public string audio_base64;
         public string content_type;
-        public string filename;
     }
 
     [Serializable]
@@ -133,7 +132,7 @@ namespace Oasis.UI
             StartCoroutine(CoVoiceTranscribeFlow(new VoiceTranscriptRequest { transcript = transcript }, onSuccess, onFailure));
         }
 
-        public void StartVoiceAudioFlow(byte[] audioBytes, string contentType, string filename, Action<string> onSuccess, Action<string> onFailure)
+        public void StartVoiceAudioFlow(byte[] audioBytes, string contentType, Action<string> onSuccess, Action<string> onFailure)
         {
             if (audioBytes == null || audioBytes.Length == 0)
             {
@@ -145,8 +144,7 @@ namespace Oasis.UI
                 new VoiceTranscriptRequest
                 {
                     audio_base64 = Convert.ToBase64String(audioBytes),
-                    content_type = string.IsNullOrWhiteSpace(contentType) ? "audio/wav" : contentType,
-                    filename = string.IsNullOrWhiteSpace(filename) ? "voice.wav" : filename
+                    content_type = string.IsNullOrWhiteSpace(contentType) ? "audio/wav" : contentType
                 },
                 onSuccess,
                 onFailure));

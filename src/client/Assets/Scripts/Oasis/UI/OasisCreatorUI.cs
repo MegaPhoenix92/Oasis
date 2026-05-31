@@ -298,7 +298,6 @@ namespace Oasis.UI
             facade.StartVoiceAudioFlow(
                 wavBytes,
                 "audio/wav",
-                "voice.wav",
                 onSuccess: SubmitVoiceTranscript,
                 onFailure: (errorCode) =>
                 {
