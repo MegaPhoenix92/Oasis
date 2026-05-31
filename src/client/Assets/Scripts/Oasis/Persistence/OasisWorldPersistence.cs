@@ -62,6 +62,7 @@ namespace Oasis.Persistence
         public List<GameObject> ImportedObjects { get; } = new List<GameObject>();
         public List<OasisWorldSkippedObject> SkippedObjects { get; } = new List<OasisWorldSkippedObject>();
         public Dictionary<string, string> ManifestJsonByAssetId { get; } = new Dictionary<string, string>();
+        public Dictionary<string, byte[]> GlbBytesByAssetId { get; } = new Dictionary<string, byte[]>();
         public OasisWorldPersistenceFailure Failure { get; internal set; } = OasisWorldPersistenceFailure.None;
         public bool Success => !Failure.IsFailure;
     }
@@ -419,6 +420,7 @@ namespace Oasis.Persistence
                     }
 
                     result.ManifestJsonByAssetId[worldObject.asset_id] = manifestJson;
+                    result.GlbBytesByAssetId[worldObject.asset_id] = glbBytes;
 
                     if (importer == null)
                         continue;
@@ -431,6 +433,7 @@ namespace Oasis.Persistence
                     }
 
                     ApplyTransform(imported.transform, worldObject.transform);
+                    imported.name = "OasisObject_" + worldObject.instance_id;
                     result.ImportedObjects.Add(imported);
                 }
             }

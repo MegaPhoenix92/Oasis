@@ -21,6 +21,8 @@ namespace Oasis.UI
         [SerializeField] private Button generateButton;
         [SerializeField] private Button placeButton;
         [SerializeField] private Button retryButton;
+        [SerializeField] private Button undoButton;
+        [SerializeField] private Button redoButton;
 
         [Header("State Panels")]
         [SerializeField] private GameObject generatingPanel;
@@ -31,10 +33,12 @@ namespace Oasis.UI
         [Header("Configuration")]
         public string backendBaseUrl = "http://localhost:8000";
 
-        // Integration Seams for #9
+        // Integration Seams for #9 and #21
         public event Action<OasisGenerationFacade.GeneratedOasisAsset> OnGenerationReady;
         public event Action OnPlaceRequested;
         public event Action<string> OnFlowFailed;
+        public event Action OnUndoRequested;
+        public event Action OnRedoRequested;
 
         private OasisCreatorState currentState = OasisCreatorState.Idle;
         private OasisGenerationFacade facade;
@@ -64,6 +68,14 @@ namespace Oasis.UI
             {
                 placeButton.onClick.AddListener(HandlePlaceRequested);
             }
+            if (undoButton != null)
+            {
+                undoButton.onClick.AddListener(HandleUndoRequested);
+            }
+            if (redoButton != null)
+            {
+                redoButton.onClick.AddListener(HandleRedoRequested);
+            }
 
             // Ensure facade is present
             facade = GetComponent<OasisGenerationFacade>();
@@ -88,6 +100,74 @@ namespace Oasis.UI
                     SubmitPrompt();
                 }
             }
+
+            // Undo/Redo keyboard shortcuts
+            bool isControlOrCommand = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl) ||
+                                     Input.GetKey(KeyCode.LeftCommand) || Input.GetKey(KeyCode.RightCommand);
+
+            if (isControlOrCommand)
+            {
+                if (Input.GetKeyDown(KeyCode.Z))
+                {
+                    if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+                    {
+                        HandleRedoRequested();
+                    }
+                    else
+                    {
+                        HandleUndoRequested();
+                    }
+                }
+                else if (Input.GetKeyDown(KeyCode.Y))
+                {
+                    HandleRedoRequested();
+                }
+            }
+        }
+
+        private bool canUndo = false;
+        private bool canRedo = false;
+
+        public void SetUndoRedoStates(bool canUndo, bool canRedo)
+        {
+            this.canUndo = canUndo;
+            this.canRedo = canRedo;
+            UpdateUndoRedoButtonInteractivity();
+        }
+
+        private void UpdateUndoRedoButtonInteractivity()
+        {
+            bool interactable = (currentState != OasisCreatorState.Generating);
+
+            if (undoButton != null)
+            {
+                undoButton.interactable = canUndo && interactable;
+                Image img = undoButton.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.color = (canUndo && interactable) ? new Color(0.25f, 0.45f, 0.75f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f);
+                }
+            }
+
+            if (redoButton != null)
+            {
+                redoButton.interactable = canRedo && interactable;
+                Image img = redoButton.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.color = (canRedo && interactable) ? new Color(0.25f, 0.45f, 0.75f, 1f) : new Color(0.2f, 0.2f, 0.2f, 0.5f);
+                }
+            }
+        }
+
+        private void HandleUndoRequested()
+        {
+            OnUndoRequested?.Invoke();
+        }
+
+        private void HandleRedoRequested()
+        {
+            OnRedoRequested?.Invoke();
         }
 
         public void SetState(OasisCreatorState state, string errorCode = null)
@@ -128,6 +208,8 @@ namespace Oasis.UI
             {
                 errorText.text = GetSafeErrorMessage(errorCode);
             }
+
+            UpdateUndoRedoButtonInteractivity();
         }
 
         public void SubmitPrompt()
@@ -291,8 +373,8 @@ namespace Oasis.UI
             genBtnRect.anchorMin = new Vector2(0.5f, 1f);
             genBtnRect.anchorMax = new Vector2(0.5f, 1f);
             genBtnRect.pivot = new Vector2(0.5f, 1f);
-            genBtnRect.anchoredPosition = new Vector2(-60f, -60f);
-            genBtnRect.sizeDelta = new Vector2(100f, 30f);
+            genBtnRect.anchoredPosition = new Vector2(-110f, -60f);
+            genBtnRect.sizeDelta = new Vector2(90f, 30f);
 
             Image genBtnImage = genBtnObj.AddComponent<Image>();
             genBtnImage.color = new Color(0.12f, 0.58f, 0.28f, 1f); // Sleek Green
@@ -309,6 +391,60 @@ namespace Oasis.UI
             genBtnText.color = Color.white;
             genBtnText.fontSize = 13f;
             genBtnText.alignment = TextAlignmentOptions.Center;
+
+            // Undo Button
+            GameObject undoBtnObj = new GameObject("UndoButton");
+            undoBtnObj.transform.SetParent(panelObj.transform, false);
+            RectTransform undoBtnRect = undoBtnObj.AddComponent<RectTransform>();
+            undoBtnRect.anchorMin = new Vector2(0.5f, 1f);
+            undoBtnRect.anchorMax = new Vector2(0.5f, 1f);
+            undoBtnRect.pivot = new Vector2(0.5f, 1f);
+            undoBtnRect.anchoredPosition = new Vector2(-10f, -60f);
+            undoBtnRect.sizeDelta = new Vector2(90f, 30f);
+
+            Image undoBtnImage = undoBtnObj.AddComponent<Image>();
+            undoBtnImage.color = new Color(0.2f, 0.2f, 0.2f, 0.5f);
+            undoButton = undoBtnObj.AddComponent<Button>();
+            undoButton.interactable = false;
+
+            GameObject undoBtnTextObj = new GameObject("Text");
+            undoBtnTextObj.transform.SetParent(undoBtnObj.transform, false);
+            RectTransform undoBtnTextRect = undoBtnTextObj.AddComponent<RectTransform>();
+            undoBtnTextRect.anchorMin = Vector2.zero;
+            undoBtnTextRect.anchorMax = Vector2.one;
+            undoBtnTextRect.sizeDelta = Vector2.zero;
+            TextMeshProUGUI undoBtnText = undoBtnTextObj.AddComponent<TextMeshProUGUI>();
+            undoBtnText.text = "Undo";
+            undoBtnText.color = Color.white;
+            undoBtnText.fontSize = 13f;
+            undoBtnText.alignment = TextAlignmentOptions.Center;
+
+            // Redo Button
+            GameObject redoBtnObj = new GameObject("RedoButton");
+            redoBtnObj.transform.SetParent(panelObj.transform, false);
+            RectTransform redoBtnRect = redoBtnObj.AddComponent<RectTransform>();
+            redoBtnRect.anchorMin = new Vector2(0.5f, 1f);
+            redoBtnRect.anchorMax = new Vector2(0.5f, 1f);
+            redoBtnRect.pivot = new Vector2(0.5f, 1f);
+            redoBtnRect.anchoredPosition = new Vector2(90f, -60f);
+            redoBtnRect.sizeDelta = new Vector2(90f, 30f);
+
+            Image redoBtnImage = redoBtnObj.AddComponent<Image>();
+            redoBtnImage.color = new Color(0.2f, 0.2f, 0.2f, 0.5f);
+            redoButton = redoBtnObj.AddComponent<Button>();
+            redoButton.interactable = false;
+
+            GameObject redoBtnTextObj = new GameObject("Text");
+            redoBtnTextObj.transform.SetParent(redoBtnObj.transform, false);
+            RectTransform redoBtnTextRect = redoBtnTextObj.AddComponent<RectTransform>();
+            redoBtnTextRect.anchorMin = Vector2.zero;
+            redoBtnTextRect.anchorMax = Vector2.one;
+            redoBtnTextRect.sizeDelta = Vector2.zero;
+            TextMeshProUGUI redoBtnText = redoBtnTextObj.AddComponent<TextMeshProUGUI>();
+            redoBtnText.text = "Redo";
+            redoBtnText.color = Color.white;
+            redoBtnText.fontSize = 13f;
+            redoBtnText.alignment = TextAlignmentOptions.Center;
 
             // 3. Generating Panel
             generatingPanel = new GameObject("GeneratingPanel");
