@@ -24,7 +24,9 @@ REQUIRED_PATHS = [
     "src/ai/README.md",
     "src/client/README.md",
     "src/client/.gitignore",
+    "src/client/Assets/Scenes.meta",
     "src/client/Assets/Scenes/OasisPoC.unity",
+    "src/client/Assets/Scenes/OasisPoC.unity.meta",
     "src/client/Packages/manifest.json",
     "src/client/ProjectSettings/EditorBuildSettings.asset",
     "src/client/ProjectSettings/ProjectSettings.asset",
@@ -56,6 +58,15 @@ REQUIRED_LFS_PATTERNS = [
     "assets/**/*.jpeg",
 ]
 
+MARKDOWN_EXCLUDED_DIRS = {
+    ".git",
+    ".venv",
+    ".pytest_cache",
+    "__pycache__",
+    "node_modules",
+    "venv",
+}
+
 
 def fail(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
@@ -86,6 +97,13 @@ def check_unity_metadata() -> None:
     if "Assets/Scenes/OasisPoC.unity" not in build_settings:
         fail("Unity build settings must include the empty PoC scene")
 
+    scene_meta = read("src/client/Assets/Scenes/OasisPoC.unity.meta")
+    scene_guid = "3a88951faac747a38bd677d45a902ecd"
+    if f"guid: {scene_guid}" not in scene_meta:
+        fail("Unity scene .meta GUID must match EditorBuildSettings.asset")
+    if f"guid: {scene_guid}" not in build_settings:
+        fail("Unity build settings must reference the committed scene .meta GUID")
+
 
 def check_env_example() -> None:
     env_text = read(".env.example")
@@ -108,7 +126,11 @@ def check_env_example() -> None:
 
 
 def check_lfs_policy() -> None:
-    lines = [line for line in read(".gitattributes").splitlines() if line.strip()]
+    lines = [
+        line
+        for line in read(".gitattributes").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
     patterns = []
     for line in lines:
         pattern, _, attrs = line.partition(" ")
@@ -146,7 +168,7 @@ def check_markdown_whitespace() -> None:
     markdown_files = [
         path
         for path in ROOT.rglob("*.md")
-        if ".git" not in path.parts
+        if not any(part in MARKDOWN_EXCLUDED_DIRS for part in path.relative_to(ROOT).parts)
     ]
     trailing = []
     for path in markdown_files:
@@ -170,4 +192,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

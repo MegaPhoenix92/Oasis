@@ -4,5 +4,23 @@ AGENT.md
 AGENTS.md
 GEMINI.md
 
+# Local environment files
+.env
+.env.*
+!.env.example
+.envrc
+
+# Local tool caches and dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+
+# OS/editor files
+.DS_Store
+.idea/
+.vscode/
+
 # Cline / Roo agent mode configs
 .clinerules-*
