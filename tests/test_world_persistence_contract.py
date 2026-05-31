@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -152,6 +153,80 @@ def _load_world(root: Path, world_id: str) -> tuple[dict, list[dict], list[dict]
     return world, loaded, skipped
 
 
+def _sanitize_bundle_filename(display_name: str, fallback_world_id: str) -> str:
+    source = display_name or fallback_world_id
+    chars: list[str] = []
+    for char in source:
+        if char.isalnum() or char in "-_ ":
+            chars.append(char)
+        elif char == "." and chars:
+            chars.append(char)
+        else:
+            chars.append("-")
+    sanitized = "".join(chars).strip(" .-")
+    while "--" in sanitized:
+        sanitized = sanitized.replace("--", "-")
+    sanitized = sanitized[:80].strip(" .-")
+    return sanitized or fallback_world_id
+
+
+def _export_bundle(root: Path, export_dir: Path, world_id: str, display_name: str | None = None) -> Path:
+    world_dir = _safe_world_dir(root, world_id)
+    world = json.loads((world_dir / "world.json").read_text(encoding="utf-8"))
+    _validate_world(world)
+    asset_ids = sorted({item["asset_id"] for item in world["objects"]})
+    for asset_id in asset_ids:
+        _uuid(asset_id, "invalid_asset_id")
+        manifest_path = world_dir / "manifests" / f"{asset_id}.json"
+        asset_path = world_dir / "assets" / f"{asset_id}.glb"
+        if not manifest_path.exists() or not asset_path.exists():
+            raise WorldError("asset_missing")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        glb = asset_path.read_bytes()
+        if manifest["asset_id"] != asset_id or hashlib.sha256(glb).hexdigest() != manifest["checksum_sha256"]:
+            raise WorldError("asset_checksum_mismatch")
+
+    export_dir.mkdir(parents=True, exist_ok=True)
+    filename = _sanitize_bundle_filename(display_name or world["name"], world["world_id"]) + ".oasisworld"
+    bundle_path = (export_dir / filename).resolve()
+    temp_path = bundle_path.with_suffix(bundle_path.suffix + ".tmp")
+    with zipfile.ZipFile(temp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.write(world_dir / "world.json", "world.json")
+        for asset_id in asset_ids:
+            archive.write(world_dir / "manifests" / f"{asset_id}.json", f"manifests/{asset_id}.json")
+            archive.write(world_dir / "assets" / f"{asset_id}.glb", f"assets/{asset_id}.glb")
+    temp_path.replace(bundle_path)
+    return bundle_path
+
+
+def _import_bundle(root: Path, bundle_path: Path) -> tuple[dict, list[dict], list[dict]]:
+    with zipfile.ZipFile(bundle_path) as archive:
+        world = json.loads(archive.read("world.json").decode("utf-8"))
+        _validate_world(world)
+        world_dir = _safe_world_dir(root, world["world_id"])
+        temp_dir = root / f"{world['world_id']}.import"
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        (temp_dir / "manifests").mkdir(parents=True)
+        (temp_dir / "assets").mkdir()
+        (temp_dir / "world.json").write_text(json.dumps(world, indent=2), encoding="utf-8")
+        for asset_id in sorted({item["asset_id"] for item in world["objects"]}):
+            manifest_name = f"manifests/{asset_id}.json"
+            asset_name = f"assets/{asset_id}.glb"
+            if manifest_name not in archive.namelist() or asset_name not in archive.namelist():
+                continue
+            manifest_json = archive.read(manifest_name).decode("utf-8")
+            manifest = json.loads(manifest_json)
+            glb = archive.read(asset_name)
+            if manifest["asset_id"] != asset_id or hashlib.sha256(glb).hexdigest() != manifest["checksum_sha256"]:
+                continue
+            (temp_dir / "manifests" / f"{asset_id}.json").write_text(manifest_json, encoding="utf-8")
+            (temp_dir / "assets" / f"{asset_id}.glb").write_bytes(glb)
+        if world_dir.exists():
+            shutil.rmtree(world_dir)
+        temp_dir.rename(world_dir)
+    return _load_world(root, world["world_id"])
+
+
 def test_world_document_round_trips_with_unknown_scene_settings(tmp_path: Path) -> None:
     manifest = _manifest()
     world = _world(scene_settings={"time_of_day": 0.25, "weather": {"fog": 0.4}, "custom": ["keep"]})
@@ -206,6 +281,60 @@ def test_missing_or_corrupt_asset_skips_object_gracefully_on_load(tmp_path: Path
     assert {item["reason"] for item in skipped} == {"asset_missing"}
 
 
+def test_export_bundle_is_sanitized_zip_of_saved_world_layout(tmp_path: Path) -> None:
+    manifest = _manifest()
+    world = _world() | {"name": "../QA: World?*"}
+    _save_world(tmp_path, world, {manifest["asset_id"]: manifest}, lambda _: GLB)
+
+    bundle = _export_bundle(tmp_path, tmp_path / "exports", world["world_id"])
+
+    assert bundle.name == "QA- World.oasisworld"
+    assert bundle.parent == (tmp_path / "exports").resolve()
+    with zipfile.ZipFile(bundle) as archive:
+        assert sorted(archive.namelist()) == [
+            f"assets/{manifest['asset_id']}.glb",
+            f"manifests/{manifest['asset_id']}.json",
+            "world.json",
+        ]
+        assert json.loads(archive.read("world.json")) == world
+
+
+def test_export_fails_loudly_when_referenced_bundle_asset_is_missing(tmp_path: Path) -> None:
+    manifest = _manifest()
+    world = _world()
+    _save_world(tmp_path, world, {manifest["asset_id"]: manifest}, lambda _: GLB)
+    (tmp_path / world["world_id"] / "assets" / f"{manifest['asset_id']}.glb").unlink()
+
+    with pytest.raises(WorldError, match="asset_missing"):
+        _export_bundle(tmp_path, tmp_path / "exports", world["world_id"])
+
+    assert not list((tmp_path / "exports").glob("*.oasisworld"))
+
+
+def test_bundle_import_is_clean_machine_relative_and_checksum_guarded(tmp_path: Path) -> None:
+    manifest = _manifest()
+    world = _world()
+    _save_world(tmp_path / "source", world, {manifest["asset_id"]: manifest}, lambda _: GLB)
+    bundle = _export_bundle(tmp_path / "source", tmp_path / "exports", world["world_id"])
+    shutil.rmtree(tmp_path / "source")
+
+    loaded_world, loaded, skipped = _import_bundle(tmp_path / "clean", bundle)
+
+    assert loaded_world == world
+    assert len(loaded) == 2
+    assert skipped == []
+
+    corrupt_bundle = tmp_path / "exports" / "corrupt.oasisworld"
+    with zipfile.ZipFile(bundle) as original, zipfile.ZipFile(corrupt_bundle, "w") as corrupt:
+        for name in original.namelist():
+            data = b"corrupt" if name.startswith("assets/") else original.read(name)
+            corrupt.writestr(name, data)
+
+    _, loaded, skipped = _import_bundle(tmp_path / "corrupt-clean", corrupt_bundle)
+    assert loaded == []
+    assert {item["reason"] for item in skipped} == {"asset_missing"}
+
+
 def test_unity_persistence_contract_is_client_local_and_fetch_path_only() -> None:
     persistence = (PERSISTENCE_DIR / "OasisWorldPersistence.cs").read_text(encoding="utf-8")
     document = (PERSISTENCE_DIR / "OasisWorldDocument.cs").read_text(encoding="utf-8")
@@ -225,6 +354,11 @@ def test_unity_persistence_contract_is_client_local_and_fetch_path_only() -> Non
     assert "manifest.source_url" not in persistence
     assert ".tmp-" in persistence
     assert "Directory.Move(tempDirectory, worldDirectory)" in persistence
+    assert "ExportBundleAsync" in persistence
+    assert "ImportBundleAsync" in persistence
+    assert "ZipArchive" in persistence
+    assert "SanitizeBundleFilename" in persistence
+    assert "archive.GetEntry(AssetsDirectoryName + \"/\" + assetId + \".glb\")" in persistence
     assert "SaveActiveWorldAsync" in scene
     assert "LoadWorldAsync" in scene
     assert "placedWorldObjects" in scene
