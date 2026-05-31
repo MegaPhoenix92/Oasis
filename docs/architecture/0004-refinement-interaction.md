@@ -58,6 +58,10 @@ respec path, below) is the async job from 0002.
 |---------------|-------|--------|
 | `POST /refine` | `{ "prior_spec": <0002 §2 Spec>, "directive": "<text>" }` | `RefineResult` (synchronous) |
 
+`prior_spec` is the **selected instance's `Spec`**, resolved client-side from the instance's
+`asset_id` → its 0002 `AssetManifest.spec` (0002 §4) — no new lookup endpoint; the manifest
+already travels with the world.
+
 ```json
 {
   "kind": "transform" | "respec",
