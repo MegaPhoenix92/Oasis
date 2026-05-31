@@ -17,7 +17,7 @@ from .service import SpecError, normalize_prompt
 OPENAI_TRANSCRIPTION_URL = "https://api.openai.com/v1/audio/transcriptions"
 DEFAULT_STT_MODEL = "gpt-4o-mini-transcribe"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
-MAX_AUDIO_BASE64_CHARS = MAX_AUDIO_BYTES * 2
+MAX_AUDIO_BASE64_CHARS = (MAX_AUDIO_BYTES * 4 // 3) + 4
 STALE_TEMP_SECONDS = 60 * 60
 MAX_TRACKED_TEMP_PATHS = 100
 
@@ -60,6 +60,8 @@ class HttpSttClient:
                 response = httpx.post(self.url, headers=headers, data=data, files=files, timeout=self.timeout_seconds)
                 response.raise_for_status()
                 payload = response.json()
+        except httpx.TimeoutException as exc:
+            raise VoiceError("timeout", "Speech-to-text provider request timed out.", 504) from exc
         except Exception as exc:
             raise VoiceError("provider_error", "Speech-to-text provider request failed.", 502) from exc
 
@@ -68,11 +70,11 @@ class HttpSttClient:
 
 
 class VoiceService:
-    def __init__(self, stt_client: SttClient | None = None, temp_dir: Path | None = None) -> None:
+    def __init__(self, stt_client: SttClient | None = None, temp_dir: Path | None = None, track_temp_paths: bool = False) -> None:
         self.stt_client = stt_client or HttpSttClient()
         self.temp_dir = temp_dir or Path(tempfile.gettempdir())
-        self.deleted_temp_paths: list[Path] = []
-        self.swept_temp_paths: list[Path] = []
+        self.deleted_temp_paths: list[Path] | None = [] if track_temp_paths else None
+        self.swept_temp_paths: list[Path] | None = [] if track_temp_paths else None
         self._sweep_stale_temp_files()
 
     def transcribe(self, *, transcript: str | None = None, audio_base64: str | None = None, content_type: str | None = None) -> str:
@@ -94,9 +96,7 @@ class VoiceService:
             if temp_path is not None:
                 try:
                     temp_path.unlink(missing_ok=True)
-                    self.deleted_temp_paths.append(temp_path)
-                    if len(self.deleted_temp_paths) > MAX_TRACKED_TEMP_PATHS:
-                        self.deleted_temp_paths.pop(0)
+                    self._track_temp_path(self.deleted_temp_paths, temp_path)
                 except OSError:
                     pass
 
@@ -106,11 +106,17 @@ class VoiceService:
             try:
                 if path.is_file() and path.stat().st_mtime < cutoff:
                     path.unlink(missing_ok=True)
-                    self.swept_temp_paths.append(path)
-                    if len(self.swept_temp_paths) > MAX_TRACKED_TEMP_PATHS:
-                        self.swept_temp_paths.pop(0)
+                    self._track_temp_path(self.swept_temp_paths, path)
             except OSError:
                 pass
+
+    def _track_temp_path(self, collection: list[Path] | None, path: Path) -> None:
+        if collection is None:
+            return
+
+        collection.append(path)
+        if len(collection) > MAX_TRACKED_TEMP_PATHS:
+            collection.pop(0)
 
 
 def _safe_transcript(transcript: str) -> str:

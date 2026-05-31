@@ -41,7 +41,7 @@ def test_voice_transcript_endpoint_returns_text_without_generation_or_telemetry(
 
 def test_voice_audio_is_transient_and_temp_file_deleted_after_stt() -> None:
     fake = FakeSttClient("add a window")
-    service = VoiceService(fake)
+    service = VoiceService(fake, track_temp_paths=True)
     client = client_with_voice(service)
     audio_base64 = base64.b64encode(b"RIFFmock wav bytes").decode("ascii")
 
@@ -59,7 +59,7 @@ def test_voice_audio_is_transient_and_temp_file_deleted_after_stt() -> None:
 
 
 def test_voice_temp_tracking_is_bounded() -> None:
-    service = VoiceService(FakeSttClient())
+    service = VoiceService(FakeSttClient(), track_temp_paths=True)
     audio_base64 = base64.b64encode(b"RIFFmock wav bytes").decode("ascii")
 
     for index in range(105):
@@ -75,7 +75,7 @@ def test_voice_service_sweeps_stale_temp_files_on_startup(tmp_path: Path) -> Non
     old = time.time() - 7200
     os.utime(stale, (old, old))
 
-    service = VoiceService(FakeSttClient(), temp_dir=tmp_path)
+    service = VoiceService(FakeSttClient(), temp_dir=tmp_path, track_temp_paths=True)
 
     assert service.swept_temp_paths == [stale]
     assert not stale.exists()
@@ -98,6 +98,13 @@ def test_voice_rejects_empty_or_invalid_payload_with_sanitized_error() -> None:
     oversized = client.post("/voice/transcribe", json={"audio_base64": "A" * (MAX_AUDIO_BASE64_CHARS + 1)})
     assert oversized.status_code == 422
     assert oversized.json() == {"error_code": "asset_invalid", "message": "Voice audio payload was too large."}
+
+
+def test_voice_temp_tracking_is_disabled_by_default() -> None:
+    service = VoiceService(FakeSttClient())
+
+    assert service.deleted_temp_paths is None
+    assert service.swept_temp_paths is None
 
 
 def test_stt_provider_key_is_server_side_only(monkeypatch) -> None:

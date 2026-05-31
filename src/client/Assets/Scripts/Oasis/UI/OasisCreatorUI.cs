@@ -268,16 +268,16 @@ namespace Oasis.UI
 
             if (Microphone.devices == null || Microphone.devices.Length == 0)
             {
-                SetState(OasisCreatorState.Error, "invalid_prompt");
-                OnFlowFailed?.Invoke("invalid_prompt");
+                SetState(OasisCreatorState.Error, "microphone_error");
+                OnFlowFailed?.Invoke("microphone_error");
                 return;
             }
 
             voiceClip = Microphone.Start(null, false, voiceMaxSeconds, voiceSampleRate);
             if (voiceClip == null)
             {
-                SetState(OasisCreatorState.Error, "invalid_prompt");
-                OnFlowFailed?.Invoke("invalid_prompt");
+                SetState(OasisCreatorState.Error, "microphone_error");
+                OnFlowFailed?.Invoke("microphone_error");
                 return;
             }
 
@@ -295,8 +295,8 @@ namespace Oasis.UI
 
             if (voiceClip == null || samplePosition <= 0)
             {
-                SetState(OasisCreatorState.Error, "invalid_prompt");
-                OnFlowFailed?.Invoke("invalid_prompt");
+                SetState(OasisCreatorState.Error, voiceClip == null ? "microphone_error" : "invalid_prompt");
+                OnFlowFailed?.Invoke(voiceClip == null ? "microphone_error" : "invalid_prompt");
                 return;
             }
 
@@ -480,6 +480,8 @@ namespace Oasis.UI
                     return "The generated asset is invalid or could not be loaded.";
                 case "network_error":
                     return "Could not connect to the Oasis AI service. Please make sure the backend is running.";
+                case "microphone_error":
+                    return "Could not access the microphone. Please check microphone permissions and try again.";
                 default:
                     return "An unexpected error occurred during generation. Please try again.";
             }
