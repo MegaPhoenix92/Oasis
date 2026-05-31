@@ -174,6 +174,8 @@ def parse_spec(raw_output: str, source_prompt: str, normalized_prompt: str) -> S
 def parse_refine_result(raw_output: str, prior_spec: Spec, directive: str) -> RefineResult:
     try:
         data = json.loads(_extract_json(raw_output))
+        if not isinstance(data, dict):
+            raise ValueError("RefineResult response must be a JSON object.")
         if data.get("kind") == "respec" and isinstance(data.get("spec"), dict):
             composed_source = f"{prior_spec.source_prompt} \u2192 {directive}"
             data["spec"]["source_prompt"] = composed_source
