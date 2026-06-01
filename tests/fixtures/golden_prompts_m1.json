@@ -1,0 +1,247 @@
+{
+  "schema_version": "1.0",
+  "suite_id": "m1-golden-prompts-v1",
+  "description": "Canonical prompt corpus for mock M1 acceptance and future real-provider viability runs.",
+  "prompts": [
+    {
+      "prompt_id": "gp_simple_chair_001",
+      "category": "simple",
+      "prompt": "a plain wooden chair",
+      "expected": {
+        "object_type": "furniture",
+        "materials_any": ["wood"],
+        "style": "plain",
+        "dimensions_m": {"width": {"min": 0.35, "max": 0.8}, "height": {"min": 0.7, "max": 1.4}, "depth": {"min": 0.35, "max": 0.9}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_simple_lamp_002",
+      "category": "simple",
+      "prompt": "a small ceramic table lamp with a fabric shade",
+      "expected": {
+        "object_type": "prop",
+        "materials_any": ["ceramic", "fabric"],
+        "style": "domestic",
+        "dimensions_m": {"width": {"min": 0.15, "max": 0.5}, "height": {"min": 0.25, "max": 0.8}, "depth": {"min": 0.15, "max": 0.5}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_simple_crate_003",
+      "category": "simple",
+      "prompt": "a square wooden storage crate",
+      "expected": {
+        "object_type": "container",
+        "materials_any": ["wood"],
+        "style": "utility",
+        "dimensions_m": {"width": {"min": 0.4, "max": 1.2}, "height": {"min": 0.3, "max": 1.0}, "depth": {"min": 0.4, "max": 1.2}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_simple_barrel_004",
+      "category": "simple",
+      "prompt": "a round oak barrel with metal bands",
+      "expected": {
+        "object_type": "container",
+        "materials_any": ["wood", "metal"],
+        "style": "rustic",
+        "dimensions_m": {"width": {"min": 0.45, "max": 1.1}, "height": {"min": 0.6, "max": 1.4}, "depth": {"min": 0.45, "max": 1.1}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_stylized_mushroom_005",
+      "category": "stylized",
+      "prompt": "a stylized glowing mushroom lantern",
+      "expected": {
+        "object_type": "prop",
+        "materials_any": ["mushroom", "glass"],
+        "style": "fantasy",
+        "dimensions_m": {"width": {"min": 0.25, "max": 0.9}, "height": {"min": 0.4, "max": 1.5}, "depth": {"min": 0.25, "max": 0.9}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_stylized_drone_006",
+      "category": "stylized",
+      "prompt": "a sleek futuristic delivery drone",
+      "expected": {
+        "object_type": "vehicle",
+        "materials_any": ["metal", "plastic"],
+        "style": "futuristic",
+        "dimensions_m": {"width": {"min": 0.5, "max": 2.0}, "height": {"min": 0.15, "max": 0.8}, "depth": {"min": 0.5, "max": 2.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_stylized_statue_007",
+      "category": "stylized",
+      "prompt": "a low-poly stone fox statue",
+      "expected": {
+        "object_type": "sculpture",
+        "materials_any": ["stone"],
+        "style": "low-poly",
+        "dimensions_m": {"width": {"min": 0.3, "max": 1.2}, "height": {"min": 0.5, "max": 1.8}, "depth": {"min": 0.25, "max": 1.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_stylized_neon_sign_008",
+      "category": "stylized",
+      "prompt": "a neon cyberpunk cafe sign",
+      "expected": {
+        "object_type": "signage",
+        "materials_any": ["metal", "glass"],
+        "style": "cyberpunk",
+        "dimensions_m": {"width": {"min": 0.8, "max": 3.0}, "height": {"min": 0.25, "max": 1.2}, "depth": {"min": 0.05, "max": 0.4}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_complex_market_stall_009",
+      "category": "complex",
+      "prompt": "a medieval market stall with striped awning and fruit baskets",
+      "expected": {
+        "object_type": "structure",
+        "materials_any": ["wood", "fabric"],
+        "style": "medieval",
+        "dimensions_m": {"width": {"min": 1.5, "max": 4.0}, "height": {"min": 1.8, "max": 3.5}, "depth": {"min": 1.0, "max": 3.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_complex_workbench_010",
+      "category": "complex",
+      "prompt": "a cluttered alchemist workbench with bottles and books",
+      "expected": {
+        "object_type": "furniture",
+        "materials_any": ["wood", "glass"],
+        "style": "fantasy",
+        "dimensions_m": {"width": {"min": 1.0, "max": 3.0}, "height": {"min": 0.7, "max": 1.8}, "depth": {"min": 0.5, "max": 1.5}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_complex_robot_011",
+      "category": "complex",
+      "prompt": "a friendly service robot with a screen face and tool arms",
+      "expected": {
+        "object_type": "character_prop",
+        "materials_any": ["metal", "plastic"],
+        "style": "friendly sci-fi",
+        "dimensions_m": {"width": {"min": 0.4, "max": 1.4}, "height": {"min": 0.8, "max": 2.2}, "depth": {"min": 0.3, "max": 1.2}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_complex_fountain_012",
+      "category": "complex",
+      "prompt": "a circular marble fountain with three tiers",
+      "expected": {
+        "object_type": "structure",
+        "materials_any": ["marble", "stone"],
+        "style": "classical",
+        "dimensions_m": {"width": {"min": 1.5, "max": 5.0}, "height": {"min": 1.0, "max": 3.5}, "depth": {"min": 1.5, "max": 5.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_large_bridge_013",
+      "category": "terrain_large",
+      "prompt": "a small stone bridge over a shallow creek",
+      "expected": {
+        "object_type": "terrain_feature",
+        "materials_any": ["stone", "water"],
+        "style": "natural",
+        "dimensions_m": {"width": {"min": 2.0, "max": 7.0}, "height": {"min": 0.5, "max": 2.5}, "depth": {"min": 1.0, "max": 4.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_large_rock_arch_014",
+      "category": "terrain_large",
+      "prompt": "a desert rock arch with wind-carved layers",
+      "expected": {
+        "object_type": "terrain_feature",
+        "materials_any": ["rock", "sandstone"],
+        "style": "natural",
+        "dimensions_m": {"width": {"min": 3.0, "max": 12.0}, "height": {"min": 2.0, "max": 8.0}, "depth": {"min": 1.0, "max": 5.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_large_treehouse_015",
+      "category": "terrain_large",
+      "prompt": "a whimsical treehouse wrapped around a broad tree trunk",
+      "expected": {
+        "object_type": "structure",
+        "materials_any": ["wood", "leaves"],
+        "style": "whimsical",
+        "dimensions_m": {"width": {"min": 2.0, "max": 8.0}, "height": {"min": 3.0, "max": 10.0}, "depth": {"min": 2.0, "max": 8.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_large_cave_016",
+      "category": "terrain_large",
+      "prompt": "a mossy cave entrance with glowing crystals",
+      "expected": {
+        "object_type": "terrain_feature",
+        "materials_any": ["rock", "crystal"],
+        "style": "fantasy natural",
+        "dimensions_m": {"width": {"min": 2.0, "max": 8.0}, "height": {"min": 1.5, "max": 5.0}, "depth": {"min": 1.0, "max": 5.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_edge_transparent_017",
+      "category": "edge",
+      "prompt": "a transparent glass cube with beveled edges",
+      "expected": {
+        "object_type": "prop",
+        "materials_any": ["glass"],
+        "style": "minimal",
+        "dimensions_m": {"width": {"min": 0.3, "max": 1.5}, "height": {"min": 0.3, "max": 1.5}, "depth": {"min": 0.3, "max": 1.5}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_edge_thin_018",
+      "category": "edge",
+      "prompt": "a very thin paper scroll standing upright on a base",
+      "expected": {
+        "object_type": "prop",
+        "materials_any": ["paper", "wood"],
+        "style": "ancient",
+        "dimensions_m": {"width": {"min": 0.2, "max": 1.0}, "height": {"min": 0.5, "max": 2.0}, "depth": {"min": 0.02, "max": 0.3}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_edge_tiny_019",
+      "category": "edge",
+      "prompt": "a tiny brass key with ornate teeth",
+      "expected": {
+        "object_type": "prop",
+        "materials_any": ["brass", "metal"],
+        "style": "ornate",
+        "dimensions_m": {"width": {"min": 0.03, "max": 0.25}, "height": {"min": 0.01, "max": 0.08}, "depth": {"min": 0.01, "max": 0.08}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    },
+    {
+      "prompt_id": "gp_edge_ambiguous_020",
+      "category": "edge",
+      "prompt": "an object that feels cozy but should become a small reading nook",
+      "expected": {
+        "object_type": "structure",
+        "materials_any": ["wood", "fabric"],
+        "style": "cozy",
+        "dimensions_m": {"width": {"min": 1.0, "max": 3.5}, "height": {"min": 1.2, "max": 3.0}, "depth": {"min": 0.8, "max": 3.0}}
+      },
+      "acceptance_metrics": {"generation_latency_ms": null, "import_success": null, "placement_success": null, "quality_score": null}
+    }
+  ]
+}
