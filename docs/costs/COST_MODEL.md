@@ -50,10 +50,13 @@
 
 ### PoC Phase Summary
 
-| Metric | Low | High |
-|--------|-----|------|
+| Metric (ESTIMATE) | Low | High |
+|-------------------|-----|------|
 | Monthly burn | $31,200 | $73,700 |
-| 4-month investment | $125,800 | $305,800 |
+| Phase-only investment (4 months) | $125,800 | $305,800 |
+
+**Rounded canonical Phase 1 estimate:** $126K - $306K phase-only and cumulative
+through Month 4.
 
 ---
 
@@ -77,10 +80,13 @@
 
 ### Alpha Phase Summary
 
-| Metric | Low | High |
-|--------|-----|------|
+| Metric (ESTIMATE) | Low | High |
+|-------------------|-----|------|
 | Monthly burn | $113,500 | $234,500 |
-| 12-month investment | $1,404,000 | $2,969,000 |
+| Phase-only investment (12 months) | $1,404,000 | $2,969,000 |
+
+**Rounded canonical Phase 2 estimate:** $1.404M - $2.969M phase-only. Added to
+Phase 1, this reconciles to $1.53M - $3.28M cumulative through Month 16.
 
 ---
 
@@ -124,20 +130,27 @@
 
 ### Revenue Requirements
 
-| CCU | Monthly Cost (Mid) | Break-Even/User |
-|-----|-------------------|-----------------|
-| 1,000 | $477,000 | $477/user/month |
-| 5,000 | $647,500 | $130/user/month |
-| 10,000 | $856,500 | $86/user/month |
+The rows below use the midpoint of the existing **Production Phase / No Pixel
+Streaming** monthly infrastructure ranges above. They are ESTIMATES and are not a
+new pricing model.
+
+| CCU | Existing monthly range (No Streaming, ESTIMATE) | Monthly Cost Midpoint (ESTIMATE) | Break-Even/User |
+|-----|--------------------------------------------------|----------------------------------|-----------------|
+| 1,000 | $33K-$87K | $60,000 | $60/user/month |
+| 5,000 | $126K-$335K | $230,500 | $46/user/month |
+| 10,000 | $230K-$650K | $440,000 | $44/user/month |
 
 ### Monetization Scenarios
 
-| Model | Revenue/User | CCU for Break-Even |
-|-------|--------------|-------------------|
-| Subscription ($15/mo) | $15 | ~60,000 CCU |
-| Subscription ($30/mo) | $30 | ~30,000 CCU |
-| Premium ($50/mo) | $50 | ~18,000 CCU |
-| Enterprise (B2B) | $200+ | ~4,000 CCU |
+The rows below use the same existing 10,000-CCU no-streaming midpoint estimate
+($440K/month) from the table above.
+
+| Model | Revenue/User | CCU for Break-Even (ESTIMATE) |
+|-------|--------------|-------------------------------|
+| Subscription ($15/mo) | $15 | ~30,000 CCU |
+| Subscription ($30/mo) | $30 | ~15,000 CCU |
+| Premium ($50/mo) | $50 | ~9,000 CCU |
+| Enterprise (B2B) | $200+ | ~2,200 CCU |
 
 ---
 
@@ -156,12 +169,23 @@
 
 ## Cumulative Investment Timeline
 
-| Milestone | Duration | Low | High |
-|-----------|----------|-----|------|
-| End of PoC | Month 4 | $126K | $306K |
-| End of Alpha | Month 16 | $1.53M | $3.28M |
-| Year 2 (1K CCU) | Month 28 | $5.06M | $11.2M |
-| Year 3 (5K CCU) | Month 40 | $9.7M | $22.1M |
+Canonical reading:
+
+- **Phase-only estimate** = incremental cost for that phase.
+- **Cumulative-through estimate** = total cost from Phase 1 start through the milestone.
+- All figures in this table are ESTIMATES rounded from existing rows in this document.
+
+| Milestone | Duration | Phase-only estimate | Cumulative-through estimate |
+|-----------|----------|---------------------|-----------------------------|
+| End of PoC / Phase 1 | Month 4 | $126K-$306K | $126K-$306K |
+| End of Alpha / Phase 2 | Month 16 | $1.404M-$2.969M | $1.53M-$3.28M |
+| Year 2 (1K CCU) | Month 28 | $3.53M-$7.92M | $5.06M-$11.2M |
+| Year 3 (5K CCU) | Month 40 | $4.64M-$10.9M | $9.7M-$22.1M |
+
+The Phase 1 and Phase 2 cumulative estimates align with the roadmap planning
+ranges (~$126K-$306K and ~$1.53M-$3.28M). The later phase-only rows are the
+existing cumulative deltas shown here only to prevent reading the cumulative totals
+as standalone phase budgets.
 
 ---
 
