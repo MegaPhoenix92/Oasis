@@ -1,0 +1,4 @@
+title = "Oasis secret scanning policy"
+
+[extend]
+useDefault = true
