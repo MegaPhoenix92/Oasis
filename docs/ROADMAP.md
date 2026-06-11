@@ -1,7 +1,7 @@
 # OASIS — Phase Roadmap
 
-**Document Version:** 1.0
-**Date:** 2026-05-30
+**Document Version:** 1.1
+**Date:** 2026-06-11
 **Classification:** Strategic R&D Planning
 **Status:** Consolidation doc — cross-links architecture, scope, and cost
 
@@ -106,7 +106,13 @@ The Alpha **success metrics** serve as the entry gate to Phase 3 (`scope/MVP_SCO
 - Average session length ≥ 20 min
 - Social sessions (2+ users) ≥ 40% of sessions
 
-> ⚠️ **Gap:** Explicit NO-GO criteria for Gate 2→3 are not yet defined in the source docs (unlike Gate 1→2). Recommend defining hard stop-conditions before Phase 2 exit — see "Open items" below.
+**NO-GO if ANY hold** (hard stop-conditions, tracked in gate issue [#47](https://github.com/MegaPhoenix92/Oasis/issues/47)):
+
+- D7 retention < 25%
+- D30 retention < 10%
+- Average session length < 15 min
+- Social sessions < 30% of sessions
+- Sustained critical instability > 1%
 
 ---
 
@@ -127,7 +133,7 @@ The Alpha **success metrics** serve as the entry gate to Phase 3 (`scope/MVP_SCO
 
 ## Cumulative investment timeline (est.)
 
-From `costs/COST_MODEL.md:157`. Note these cumulative figures span team + infra over a longer horizon and are an **independent estimate** from the per-phase budgets above — the two have not been reconciled (see Open items).
+From `costs/COST_MODEL.md` ("Cumulative Investment Timeline"). The cost model is the **canonical bottom-up estimate** (team + infra): each milestone now carries both a *phase-only* and a *cumulative-through* figure, and the two readings reconcile by construction. The scope doc's ~$400K / ~$2.6M / ~$45M rows remain as top-down planning envelopes only.
 
 | Milestone | Month | Low | High |
 |-----------|-------|-----|------|
@@ -151,9 +157,10 @@ Carried across all phases (`architecture/ARCHITECTURE_OVERVIEW.md`):
 
 ## Open items (to resolve before each gate)
 
-- [ ] **Define Gate 2→3 NO-GO criteria** — Phase 2 has success metrics but no explicit stop-conditions (Phase 1 has both).
-- [ ] **Reconcile budget figures** — per-phase budgets (`scope`: ~$400K / ~$2.6M / ~$45M) vs cumulative timeline (`costs`: $126K–$306K / $1.53M–$3.28M / …) are independent estimates that don't currently tie out. Pick one canonical model.
-- [ ] **Reconcile break-even table** — `costs/COST_MODEL.md:123` break-even figures don't reconcile with the per-CCU cost tables above them.
+- [x] **Define Gate 2→3 NO-GO criteria** — defined in gate issue #47 and mirrored in the Gate 2→3 section above (resolved 2026-06-11).
+- [x] **Reconcile budget figures** — `costs/COST_MODEL.md` is the canonical model: every milestone states phase-only and cumulative-through estimates that tie out; the scope doc's rows are top-down envelopes (resolved via #66).
+- [x] **Reconcile break-even table** — break-even and monetization tables now state their basis (midpoint of the no-streaming production infra ranges), and the cost-per-CCU table documents its fully-burdened (team + infra) derivation (resolved via #67).
+- [ ] **Gate 1→2 evaluation (#25)** — run the golden-prompt suite + Phase-1 metrics against the live pipeline and make the production-engine decision.
 
 ---
 
