@@ -28,6 +28,9 @@ jobs:
       - name: Validate Unity import pipeline
         run: python3 scripts/validate_unity_import_pipeline.py
 
+      - name: Validate offline import fixture
+        run: python3 scripts/build_import_fixture.py --check
+
       - name: Validate Unity Creator UI
         run: python3 scripts/validate_unity_creator_ui.py
 

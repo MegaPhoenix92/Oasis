@@ -114,8 +114,17 @@ Phase 1, this reconciles to $1.53M - $3.28M cumulative through Month 16.
 
 ## Cost Per Concurrent User Analysis
 
-| Phase | CCU | Cost/User/Month |
-|-------|-----|-----------------|
+**Basis:** these figures are the **fully-burdened monthly burn (team + infrastructure)
+divided by CCU** — *not* the infrastructure-only tables above. Derivations:
+
+- PoC: monthly burn $31.2K–$73.7K (PoC Phase Summary) ÷ 50 CCU
+- Alpha: monthly burn $113.5K–$234.5K (Alpha Phase Summary) ÷ 500 CCU
+- Production 1,000: Year-2 phase-only $3.53M–$7.92M ÷ 12 months ÷ 1,000 CCU
+- Production 5,000: Year-3 phase-only $4.64M–$10.9M ÷ 12 months ÷ 5,000 CCU
+- Production 10,000: same team-cost assumption plus the 10K-CCU infrastructure range ÷ 10,000 CCU
+
+| Phase | CCU | Cost/User/Month (team + infra) |
+|-------|-----|--------------------------------|
 | PoC | 50 | $624 - $1,474 |
 | Alpha | 500 | $227 - $469 |
 | Production | 1,000 | $294 - $660 |

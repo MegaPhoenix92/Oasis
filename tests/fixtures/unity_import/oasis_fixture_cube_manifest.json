@@ -1,0 +1,37 @@
+{
+  "asset_id": "a74c0b6e-0f15-4f74-9b3a-2d6c1e5b8f01",
+  "source_prompt": "a plain gray cube",
+  "normalized_prompt": "plain gray cube",
+  "spec": {
+    "schema_version": "1.0",
+    "source_prompt": "a plain gray cube",
+    "normalized_prompt": "plain gray cube",
+    "object_type": "primitive",
+    "name": "fixture cube",
+    "materials": [
+      "matte"
+    ],
+    "style": "minimal",
+    "dimensions": {
+      "width": 0.5,
+      "height": 0.25,
+      "depth": 0.75
+    },
+    "details": [
+      "deterministic offline fixture",
+      "12 triangles"
+    ],
+    "meshy_prompt": "a plain gray unit cube, minimal style"
+  },
+  "provider": "meshy.ai",
+  "job_id": "offline-fixture-cube",
+  "source_url": "https://provider.example/assets/oasis-fixture-cube.glb",
+  "fetch_path": "/assets/a74c0b6e-0f15-4f74-9b3a-2d6c1e5b8f01",
+  "local_path": "assets/generated/a74c0b6e-0f15-4f74-9b3a-2d6c1e5b8f01.glb",
+  "checksum_sha256": "df9aa4cf64062f9e0a55716b3fc836f3a4f01e1b36d5a88482c2769955091ff1",
+  "format": "glb",
+  "file_size_bytes": 844,
+  "triangle_count": 12,
+  "texture_count": 0,
+  "created_at": "2026-06-11T00:00:00Z"
+}
